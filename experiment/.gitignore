@@ -1,0 +1,3 @@
+thermal_config_experiment
+*.csv
+__pycache__/
