@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuda-launch-selector"
+version = "0.1.0"
+description = "Modular learned CUDA thread-block configuration selector"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "torch>=2.1",
+]
+
+[project.optional-dependencies]
+fasttext = ["fasttext-wheel>=0.9.2"]
+tracking = ["wandb>=0.17"]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["inference"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+

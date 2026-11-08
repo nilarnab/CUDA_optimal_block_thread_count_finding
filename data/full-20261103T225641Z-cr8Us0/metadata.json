@@ -1,0 +1,58 @@
+{
+  "started_utc": "2026-11-03T22:56:51.603156+00:00",
+  "mode": "full",
+  "seed": 7849187538850593371,
+  "cuda_logical_device": 0,
+  "CUDA_VISIBLE_DEVICES": null,
+  "SLURM_JOB_ID": null,
+  "dataset_repository": "https://github.com/NTNU-HPC-Lab/LS-CAT",
+  "dataset_commit": "83a50786eee2de633be477819c044d2c9a1ad076",
+  "device": {
+    "gpu_name": "NVIDIA GeForce RTX 2080 Ti",
+    "compute_capability": "7.5",
+    "sm_count": 68,
+    "max_threads_per_block": 1024,
+    "max_block_dim_x": 1024,
+    "max_block_dim_y": 1024,
+    "driver_version": 13020,
+    "runtime_version": 13000,
+    "pci_bus_id": "0000:83:00.0",
+    "kernels": {
+      "vector_add": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 12,
+        "static_shared_bytes": 0
+      },
+      "segmented_sum": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 26,
+        "static_shared_bytes": 0
+      },
+      "periodic_tile": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 22,
+        "static_shared_bytes": 0
+      },
+      "repeat_vector": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 8,
+        "static_shared_bytes": 0
+      },
+      "matrix_transpose": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 18,
+        "static_shared_bytes": 0
+      },
+      "matrix_add": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 12,
+        "static_shared_bytes": 0
+      }
+    }
+  },
+  "planned_trials": 7000,
+  "timeout_seconds_per_trial": 60,
+  "method": "CUDA events, adaptive batch approximately 10ms capped at 1000 launches, full output check",
+  "timing_scope": "steady repeated kernel launches; allocation, copies, CPU checks excluded",
+  "launch_policy": "native (b,1) for 1D indexing; historical 20 shapes for matrix_add"
+}

@@ -1,0 +1,90 @@
+{
+  "commit": "83a50786eee2de633be477819c044d2c9a1ad076",
+  "repository": "https://github.com/NTNU-HPC-Lab/LS-CAT",
+  "kernels": [
+    {
+      "path": "10047/0/add.cu",
+      "function": "add",
+      "id": "vector_add",
+      "note": "float out=a+b; require block_y=block_z=1",
+      "upstream_path": "data/kernels/10047/0/add.cu",
+      "repo_id": 10047,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10047/0/add.cu",
+      "git_blob_sha1": "7778be56d8bb284d9a2fcb432361972e2c1c777b",
+      "sha256": "6b2393df0a9a066fdc92708a2bb5d7db78dc3ee4583b631d7415caa1067808e6",
+      "local_path": "ls_cat_pilot/kernels/10047/0/add.cu",
+      "original_includes_size": 0,
+      "required_support": ""
+    },
+    {
+      "path": "10040/1/gpuSum.cu",
+      "function": "gpuSum",
+      "id": "segmented_sum",
+      "note": "int output per day=sum(seconds inputs); N argument unused; avoid int overflow; require block_y=block_z=1",
+      "upstream_path": "data/kernels/10040/1/gpuSum.cu",
+      "repo_id": 10040,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10040/1/gpuSum.cu",
+      "git_blob_sha1": "6d4f9efc21619f6c8bf5fecb88ad685edabcc939",
+      "sha256": "a435cf5d7b3f350120e332cb6efa61c4ef49943fbbcc5ce2d87ca92ec51e653a",
+      "local_path": "ls_cat_pilot/kernels/10040/1/gpuSum.cu",
+      "original_includes_size": 0,
+      "required_support": ""
+    },
+    {
+      "path": "10073/223/kTile.cu",
+      "function": "kTile",
+      "id": "periodic_tile",
+      "note": "float tiled 2D output from periodic input; supplied header needs using uint=unsigned int; grid-stride linear x",
+      "upstream_path": "data/kernels/10073/223/kTile.cu",
+      "repo_id": 10073,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10073/223/kTile.cu",
+      "git_blob_sha1": "0774662cf91a016989129fad5efc1a71ed4db81a",
+      "sha256": "f8ac17ebb3cbeebafa35ea4b53c81b8261ef886f3880db19b6821016eac96656",
+      "local_path": "ls_cat_pilot/kernels/10073/223/kTile.cu",
+      "original_includes_size": 0,
+      "required_support": "using uint = unsigned int;"
+    },
+    {
+      "path": "1018/5/times.cu",
+      "function": "times",
+      "id": "repeat_vector",
+      "note": "float output repeats input n times; guard n*input_size; require block_y=block_z=1",
+      "upstream_path": "data/kernels/1018/5/times.cu",
+      "repo_id": 1018,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/1018/5/times.cu",
+      "git_blob_sha1": "df46f9a1c915784acf2e3f2d7c7df5f5feb48deb",
+      "sha256": "05bd285a873fd303fb7b6375130bfc3c0902bbaca5851187a5a640c3cc2305ef",
+      "local_path": "ls_cat_pilot/kernels/1018/5/times.cu",
+      "original_includes_size": 0,
+      "required_support": ""
+    },
+    {
+      "path": "10194/34/flatten_kernel.cu",
+      "function": "flatten_kernel",
+      "id": "matrix_transpose",
+      "note": "float permutation [batch,layers,spatial] to[batch,spatial,layers], forward1; batch1 and layers=spatial=side makes matrix transpose; blocks require y=z=1",
+      "upstream_path": "data/kernels/10194/34/flatten_kernel.cu",
+      "repo_id": 10194,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/34/flatten_kernel.cu",
+      "git_blob_sha1": "0a6d7841fd94be0e737082f799374f0e154a3f1d",
+      "sha256": "37647625b2e16c99f24116e2b6ab26c1d0618b8c2900841b702de2865fc09f21",
+      "local_path": "ls_cat_pilot/kernels/10194/34/flatten_kernel.cu",
+      "original_includes_size": 0,
+      "required_support": ""
+    },
+    {
+      "path": "10273/0/sumMat.cu",
+      "function": "sumMat",
+      "id": "matrix_add",
+      "note": "double NxN addition; boundary guarded; arbitrary positive1D/2D block shapes within device limits",
+      "upstream_path": "data/kernels/10273/0/sumMat.cu",
+      "repo_id": 10273,
+      "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10273/0/sumMat.cu",
+      "git_blob_sha1": "a7ab1eb7e7b539d043ee6926abd743dd06ee7b72",
+      "sha256": "5fe7c55ff6f2ceaf9fa801b46fd56c8241cb0c5e8abb8680317f7f2649ef83d4",
+      "local_path": "ls_cat_pilot/kernels/10273/0/sumMat.cu",
+      "original_includes_size": 0,
+      "required_support": ""
+    }
+  ]
+}
