@@ -41,7 +41,7 @@ returns the catalog entry with the highest score.
 
 ## Install
 
-Use Python 3.10-3.13 with PyTorch support:
+Use Python 3.9-3.13 with PyTorch support:
 
 ```bash
 python3 -m venv .venv
