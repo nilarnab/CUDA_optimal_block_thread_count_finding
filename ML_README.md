@@ -183,11 +183,16 @@ making the displayed run name excessively long.
 
 The run records the model and split configuration plus training loss,
 validation loss, performance score, mean regret, and exact-optimal rate for
-every epoch. After training it also benchmarks batch-size-one selector
-inference and reports mean, median, and p95 model latency plus throughput. The
-timing includes the complete neural model and `argmax`, but excludes LLVM
-compilation, tokenization, tensor transfer, and CUDA kernel execution. Use
-`--latency-warmup` and `--latency-repetitions` to control the benchmark.
+every epoch. After training it caches each kernel representation and benchmarks
+the batch-size-one runtime predictor. It reports mean, median, and p95 latency
+plus throughput. Timing includes problem-size tensor creation/transfer, the
+context encoder, configuration scorer, `argmax`, and returning the action to
+the host. It excludes the offline LLVM, tokenization, FastText and LSTM stages,
+as well as CUDA kernel execution. Use `--latency-warmup` and
+`--latency-repetitions` to control the benchmark. The run also reports the
+mean optimal validation-kernel runtime and the predictor-overhead ratio. That
+ratio is directly comparable only when the runtime table and predictor were
+measured on the same GPU.
 
 Use `--wandb-entity` for a team account. To collect data without
 network access, add `--wandb-mode offline`; it can later be uploaded with

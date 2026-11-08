@@ -237,14 +237,30 @@ def main() -> None:
             repetitions=args.latency_repetitions,
         )
         latency_metrics = wandb_inference_metrics(latency)
-        history[-1]["inference_latency"] = latency_metrics
+        mean_optimal_kernel_us = sum(
+            min(sample.runtimes) for sample in validation_data
+        ) / len(validation_data)
+        overhead_ratio = (latency.mean_ms * 1000.0) / mean_optimal_kernel_us
+        latency_metrics.update(
+            {
+                "inference/validation_optimal_kernel_runtime_mean_us": (
+                    mean_optimal_kernel_us
+                ),
+                "inference/runtime_predictor_overhead_vs_optimal_kernel": (
+                    overhead_ratio
+                ),
+            }
+        )
+        history[-1]["runtime_predictor_latency"] = latency_metrics
         if args.verbose:
             print(
-                "[training:latency] "
+                "[training:runtime-predictor-latency] "
                 f"mean={latency.mean_ms:.4f}ms "
                 f"median={latency.median_ms:.4f}ms "
                 f"p95={latency.p95_ms:.4f}ms "
-                f"throughput={latency.samples_per_second:.2f} samples/s"
+                f"throughput={latency.samples_per_second:.2f} samples/s "
+                f"validation_optimal_kernel_mean={mean_optimal_kernel_us:.4f}us "
+                f"overhead_ratio={overhead_ratio:.2f}x"
             )
         if wandb_run:
             wandb_run.log(latency_metrics, step=history[-1]["epoch"])

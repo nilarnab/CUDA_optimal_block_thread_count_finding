@@ -33,13 +33,13 @@ class WandbEpochLogger:
 
 
 def wandb_inference_metrics(latency: Any) -> dict[str, float]:
-    """Map selector latency measurements to W&B metric names."""
+    """Map cached launch-time predictor latency to W&B metric names."""
 
     return {
-        "inference/model_latency_mean_ms": float(latency.mean_ms),
-        "inference/model_latency_median_ms": float(latency.median_ms),
-        "inference/model_latency_p95_ms": float(latency.p95_ms),
-        "inference/model_throughput_samples_per_second": float(
+        "inference/runtime_predictor_latency_mean_ms": float(latency.mean_ms),
+        "inference/runtime_predictor_latency_median_ms": float(latency.median_ms),
+        "inference/runtime_predictor_latency_p95_ms": float(latency.p95_ms),
+        "inference/runtime_predictor_throughput_per_second": float(
             latency.samples_per_second
         ),
     }

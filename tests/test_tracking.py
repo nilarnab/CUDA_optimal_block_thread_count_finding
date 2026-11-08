@@ -40,7 +40,9 @@ class TrackingTest(unittest.TestCase):
             samples_per_second = 833.33
 
         metrics = wandb_inference_metrics(Latency())
-        self.assertEqual(metrics["inference/model_latency_median_ms"], 1.0)
         self.assertEqual(
-            metrics["inference/model_throughput_samples_per_second"], 833.33
+            metrics["inference/runtime_predictor_latency_median_ms"], 1.0
+        )
+        self.assertEqual(
+            metrics["inference/runtime_predictor_throughput_per_second"], 833.33
         )

@@ -56,14 +56,26 @@ class ConfigurationModel(nn.Module):
         self.fusion = fusion or ConcatenationFusion()
         self.scorer = scorer
 
+    def encode_kernel(
+        self, tokens: torch.Tensor, lengths: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute the kernel representation that can be cached offline."""
+
+        return self.kernel_encoder(self.token_encoder(tokens), lengths)
+
+    def score_cached(
+        self, kernel_vector: torch.Tensor, context: torch.Tensor
+    ) -> torch.Tensor:
+        """Score configurations from a cached kernel vector at launch time."""
+
+        context_vector = self.context_encoder(context)
+        return self.scorer(self.fusion(kernel_vector, context_vector))
+
     def forward(
         self,
         tokens: torch.Tensor,
         lengths: torch.Tensor,
         context: torch.Tensor,
     ) -> torch.Tensor:
-        token_vectors = self.token_encoder(tokens)
-        kernel_vector = self.kernel_encoder(token_vectors, lengths)
-        context_vector = self.context_encoder(context)
-        return self.scorer(self.fusion(kernel_vector, context_vector))
+        return self.score_cached(self.encode_kernel(tokens, lengths), context)
 

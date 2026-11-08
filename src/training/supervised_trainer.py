@@ -32,7 +32,7 @@ class TrainerConfig:
 
 @dataclass(frozen=True)
 class InferenceLatency:
-    """Single-sample selector latency with model inputs already prepared."""
+    """End-to-end launch-time predictor latency with a cached kernel vector."""
 
     mean_ms: float
     median_ms: float
@@ -139,25 +139,31 @@ class SupervisedTrainer:
         warmup: int = 3,
         repetitions: int = 5,
     ) -> InferenceLatency:
-        """Benchmark batch-size-one model forward + argmax latency.
+        """Benchmark the actual launch-time predictor with batch size one.
 
-        Tokenization, host-to-device transfer, LLVM compilation, and CUDA
-        kernel execution are intentionally excluded.
+        Kernel tokenization, FastText and LSTM encoding are performed before
+        timing and cached. Timing includes problem-size tensor construction
+        and transfer, context encoding, scoring, argmax, and returning the
+        selected action to the host. CUDA kernel execution is excluded.
         """
 
         if warmup < 0 or repetitions < 1:
             raise ValueError("warmup must be non-negative and repetitions positive")
         self.model.eval()
+        if not hasattr(self.model, "encode_kernel") or not hasattr(
+            self.model, "score_cached"
+        ):
+            raise TypeError("model does not expose cached-kernel inference")
         samples = []
         for batch in batches:
-            batch = self._move(batch)
+            tokens = batch["tokens"].to(self.config.device)
+            lengths = batch["lengths"].to(self.config.device)
+            kernel_vectors = self.model.encode_kernel(tokens, lengths)
             for index in range(batch["tokens"].size(0)):
-                length = int(batch["lengths"][index].item())
                 samples.append(
                     (
-                        batch["tokens"][index : index + 1, :length],
-                        batch["lengths"][index : index + 1],
-                        batch["context"][index : index + 1],
+                        kernel_vectors[index : index + 1],
+                        tuple(float(value) for value in batch["context"][index]),
                     )
                 )
         if not samples:
@@ -170,9 +176,17 @@ class SupervisedTrainer:
             elif device.type == "mps":
                 torch.mps.synchronize()
 
+        def choose(sample) -> int:
+            kernel_vector, problem_size = sample
+            context = torch.tensor(
+                [problem_size], dtype=torch.float32, device=self.config.device
+            )
+            logits = self.model.score_cached(kernel_vector, context)
+            return int(logits.argmax(dim=-1).item())
+
         first = samples[0]
         for _ in range(warmup):
-            self.model(*first).argmax(dim=-1)
+            choose(first)
         synchronize()
 
         measurements_ms = []
@@ -180,7 +194,7 @@ class SupervisedTrainer:
             for _ in range(repetitions):
                 synchronize()
                 started = time.perf_counter_ns()
-                self.model(*sample).argmax(dim=-1)
+                choose(sample)
                 synchronize()
                 measurements_ms.append((time.perf_counter_ns() - started) / 1e6)
 

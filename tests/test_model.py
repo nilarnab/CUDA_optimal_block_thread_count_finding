@@ -35,6 +35,10 @@ class ModelSmokeTest(unittest.TestCase):
         context = torch.tensor([[1024.0], [2048.0]])
         logits = model(tokens, lengths, context)
         self.assertEqual(tuple(logits.shape), (2, 16))
+        cached_logits = model.score_cached(
+            model.encode_kernel(tokens, lengths), context
+        )
+        self.assertTrue(torch.equal(logits, cached_logits))
         targets = torch.zeros_like(logits)
         targets[:, 0] = 1
         self.assertTrue(torch.isfinite(PerformanceTargetLoss()(logits, targets)))
@@ -58,8 +62,11 @@ class ModelSmokeTest(unittest.TestCase):
             model, LLVMTokenizer(), vocabulary, catalog
         )
         prediction = engine.predict("define void @kernel()", (1024,))
+        cached = engine.prepare_kernel("define void @kernel()")
+        cached_prediction = engine.predict_cached(cached, (1024,))
         self.assertEqual(len(prediction.scores), 16)
         self.assertEqual(catalog.from_id(prediction.action_id), prediction.configuration)
+        self.assertEqual(prediction.action_id, cached_prediction.action_id)
 
 
 if __name__ == "__main__":
