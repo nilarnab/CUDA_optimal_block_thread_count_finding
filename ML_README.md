@@ -41,23 +41,30 @@ returns the catalog entry with the highest score.
 
 ## Install
 
-Use Python 3.9-3.13 with PyTorch support:
+The project uses `uv` with Python 3.11 and a committed lockfile. Install `uv`,
+then create the environment with every optional feature:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev,fasttext]'
+python3 -m pip install --user uv
+export PATH="$HOME/.local/bin:$PATH"
+uv sync --python 3.11 --all-extras --locked
 ```
 
-To enable optional Weights & Biases tracking, include the `tracking` extra:
+`uv` downloads Python 3.11 when it is not already available and creates the
+project `.venv`. The explicit `--python 3.11` also replaces an incompatible
+pre-existing environment. For an installation without FastText or W&B, use
+`uv sync --python 3.11 --locked`.
+To verify that the lockfile is current without changing it:
 
 ```bash
-python -m pip install -e '.[dev,fasttext,tracking]'
+uv lock --check
 ```
 
-The current local macOS Python is 3.14, for which PyTorch wheels may not yet be
-available. A CUDA machine should use the PyTorch package appropriate for its
-installed CUDA toolkit.
+On a CUDA machine, verify the resolved PyTorch build before training:
+
+```bash
+uv run --locked python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
 
 ## Runtime table format
 
@@ -78,7 +85,7 @@ The data, tokenizer, catalog, and split tests use only the Python standard
 library:
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+uv run --locked python -m unittest discover -s tests -v
 ```
 
 ## Prepare the collected pilot
@@ -87,7 +94,7 @@ Convert a complete pilot run into the common 16-action runtime table and copy
 the six kernels under stable semantic IDs:
 
 ```bash
-PYTHONPATH=src python scripts/prepare_pilot_dataset.py \
+uv run --locked python scripts/prepare_pilot_dataset.py \
   --run-dir data/full-20261103T225641Z-cr8Us0 \
   --output-dir data/processed \
   --verbose
@@ -106,7 +113,7 @@ Next prepare LLVM IR, the vocabulary, token IDs, and the FastText corpus on a
 machine with Clang CUDA support:
 
 ```bash
-PYTHONPATH=src python scripts/prepare_frontend.py \
+uv run --locked python scripts/prepare_frontend.py \
   --cuda-dir data/processed/cuda \
   --output-dir data/processed \
   --gpu-arch sm_75 \
@@ -117,7 +124,7 @@ Train the frozen 40-dimensional skip-gram frontend and export the embedding
 matrix:
 
 ```bash
-PYTHONPATH=src python scripts/train_fasttext.py \
+uv run --locked python scripts/train_fasttext.py \
   --corpus data/processed/fasttext_corpus.txt \
   --vocabulary data/processed/vocabulary.json \
   --output-model data/processed/fasttext.bin \
@@ -128,7 +135,7 @@ PYTHONPATH=src python scripts/train_fasttext.py \
 Then train the selector:
 
 ```bash
-PYTHONPATH=src python scripts/train_supervised.py \
+uv run --locked python scripts/train_supervised.py \
   --runtimes data/processed/runtimes.csv \
   --token-ids data/processed/token_ids.json \
   --embedding-matrix data/processed/fasttext_embeddings.pt \
@@ -151,7 +158,7 @@ checkpoint records the exact kernel IDs used by each partition.
 Pass a project name to enable W&B for a training run:
 
 ```bash
-PYTHONPATH=src python scripts/train_supervised.py \
+uv run --locked python scripts/train_supervised.py \
   --runtimes data/processed/runtimes.csv \
   --token-ids data/processed/token_ids.json \
   --embedding-matrix data/processed/fasttext_embeddings.pt \

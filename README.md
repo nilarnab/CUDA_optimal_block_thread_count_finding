@@ -6,6 +6,8 @@ existing heater and thermal experiment are unchanged.
 
 For the collected LS-CAT pilot, begin with `scripts/prepare_pilot_dataset.py`;
 it converts the saved measurements into the 16-action NLP baseline format.
+The Python project is managed with `uv`; run `uv sync --all-extras` after
+cloning it.
 
 `gpu_heat_monitor` applies a compute-heavy CUDA workload and periodically
 reports GPU temperature, board power, utilization, clocks, and active clock
