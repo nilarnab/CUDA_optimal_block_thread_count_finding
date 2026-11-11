@@ -1,0 +1,115 @@
+{
+  "csv_format": "ls_cat_pilot_first_version",
+  "heavy_protocol_revision": 1,
+  "session_id": "heavy-full-20261111T213726Z-3bUTR6",
+  "started_utc": "2026-11-11T21:37:40.472975+00:00",
+  "mode": "full",
+  "kernels": [
+    "gemm",
+    "segmented_sum",
+    "mean",
+    "variance",
+    "syrk",
+    "nbody"
+  ],
+  "device": {
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "pci_bus_id": "0000:00:04.0",
+    "sm_count": 108,
+    "compute_capability": "8.0",
+    "driver_version": 13030,
+    "runtime_version": 13000,
+    "free_bytes": 41981575168,
+    "total_bytes": 42430300160,
+    "max_threads_per_block": 1024,
+    "max_block_dim_x": 1024,
+    "max_block_dim_y": 1024,
+    "max_grid_dim_x": 2147483647,
+    "max_grid_dim_y": 65535,
+    "kernels": {
+      "gemm": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 27,
+        "static_shared_bytes": 0
+      },
+      "segmented_sum": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 26,
+        "static_shared_bytes": 0
+      },
+      "mean": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 22,
+        "static_shared_bytes": 0
+      },
+      "variance": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 34,
+        "static_shared_bytes": 0
+      },
+      "syrk": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 26,
+        "static_shared_bytes": 0
+      },
+      "nbody": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 32,
+        "static_shared_bytes": 0
+      }
+    }
+  },
+  "grid_search": "coverage",
+  "session_seed": 3205322085810824798,
+  "input_seeds": 1,
+  "repeats": 10,
+  "max_device_bytes": 2147483648,
+  "probe_timeout_s": 180,
+  "worker_timeout_s": 3600,
+  "assumed_prediction_ms": 0.8,
+  "timing_method": "one kernel launch between CUDA events; one warmup per action per worker",
+  "correctness": "full CPU output reference for <=4096 output elements; otherwise 64 deterministic CPU samples plus all-output finite scan and both guards",
+  "grouping": "Keep every shape/seed/session of a split_group together when evaluating unseen source",
+  "provenance": {
+    "sources": [
+      {
+        "path": "upstream/syrk.cu",
+        "git_blob_sha1": "a80e1238bd577de83a97886fbe7ef5a7fb84572f",
+        "sha256": "f41048fc9549bbfc39cd149419f2d1cc54734e52a3012944608cba99cf7f9d4e",
+        "url": "https://github.com/cavazos-lab/PolyBench-ACC/blob/master/CUDA/linear-algebra/kernels/syrk/syrk.cu"
+      },
+      {
+        "path": "upstream/nbody.cu",
+        "git_blob_sha1": "c6e305b787f8f1457b7da290c23d925d5321321b",
+        "sha256": "a29a80064208700d567dba70764d3282446f9ee6f27722483a7314f1bf6a4e55",
+        "url": "https://github.com/NVIDIA/cuda-samples/blob/master/cpp/5_Domain_Specific/nbody/bodysystemcuda.cu"
+      },
+      {
+        "path": "kernels/matrixMultiply.cu",
+        "git_blob_sha1": "ecee141765c833f49958abc997d02484f77119e1",
+        "sha256": "0e150025658472f57849c27172413e3530c204619e722eea4bc6f58206f761e4",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/104/3/matrixMultiply.cu"
+      },
+      {
+        "path": "kernels/gpuSum.cu",
+        "git_blob_sha1": "6d4f9efc21619f6c8bf5fecb88ad685edabcc939",
+        "sha256": "a435cf5d7b3f350120e332cb6efa61c4ef49943fbbcc5ce2d87ca92ec51e653a",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10040/1/gpuSum.cu"
+      },
+      {
+        "path": "kernels/mean_kernel.cu",
+        "git_blob_sha1": "ff33016901e6e1407aa84e8ec743a643b3353b83",
+        "sha256": "d10b398cecc6aa8fddfbfab37f43ef219c6847aed20a9c194950845233f16975",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/19/mean_kernel.cu"
+      },
+      {
+        "path": "kernels/variance_kernel.cu",
+        "git_blob_sha1": "480b17d21d168b517c2eb3631687d33708c75d38",
+        "sha256": "10249a50a14bd580670410574203ceceb468b3ed176313c046109acf8b664d1b",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/20/variance_kernel.cu"
+      }
+    ],
+    "nbody": "Authored force-only grid-stride adaptation of NVIDIA tiled all-pairs algorithm; no integration or velocity updates.",
+    "syrk": "Kernel body extracted verbatim; compile-time stride macros map to runtime parameters."
+  }
+}

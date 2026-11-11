@@ -1,0 +1,2 @@
+CPU reference compile flags: -O2 -std=c++14
+All five original-kernel dispatches and N-body interaction/reference checks passed.

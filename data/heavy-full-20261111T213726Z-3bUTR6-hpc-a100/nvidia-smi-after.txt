@@ -1,0 +1,2 @@
+index, uuid, pci.bus_id, name, driver_version
+0, GPU-d72f30f4-b9af-1755-fa2c-d0944f33d7fa, 00000000:00:04.0, NVIDIA A100-SXM4-40GB, 610.43.02
