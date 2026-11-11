@@ -1,0 +1,1 @@
+Kernel compile flags: -O3 -std=c++14 -lineinfo -arch=sm_75

@@ -1,0 +1,42 @@
+{
+  "sources": [
+    {
+      "path": "upstream/syrk.cu",
+      "git_blob_sha1": "a80e1238bd577de83a97886fbe7ef5a7fb84572f",
+      "sha256": "f41048fc9549bbfc39cd149419f2d1cc54734e52a3012944608cba99cf7f9d4e",
+      "url": "https://github.com/cavazos-lab/PolyBench-ACC/blob/master/CUDA/linear-algebra/kernels/syrk/syrk.cu"
+    },
+    {
+      "path": "upstream/nbody.cu",
+      "git_blob_sha1": "c6e305b787f8f1457b7da290c23d925d5321321b",
+      "sha256": "a29a80064208700d567dba70764d3282446f9ee6f27722483a7314f1bf6a4e55",
+      "url": "https://github.com/NVIDIA/cuda-samples/blob/master/cpp/5_Domain_Specific/nbody/bodysystemcuda.cu"
+    },
+    {
+      "path": "kernels/matrixMultiply.cu",
+      "git_blob_sha1": "ecee141765c833f49958abc997d02484f77119e1",
+      "sha256": "0e150025658472f57849c27172413e3530c204619e722eea4bc6f58206f761e4",
+      "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/104/3/matrixMultiply.cu"
+    },
+    {
+      "path": "kernels/gpuSum.cu",
+      "git_blob_sha1": "6d4f9efc21619f6c8bf5fecb88ad685edabcc939",
+      "sha256": "a435cf5d7b3f350120e332cb6efa61c4ef49943fbbcc5ce2d87ca92ec51e653a",
+      "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10040/1/gpuSum.cu"
+    },
+    {
+      "path": "kernels/mean_kernel.cu",
+      "git_blob_sha1": "ff33016901e6e1407aa84e8ec743a643b3353b83",
+      "sha256": "d10b398cecc6aa8fddfbfab37f43ef219c6847aed20a9c194950845233f16975",
+      "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/19/mean_kernel.cu"
+    },
+    {
+      "path": "kernels/variance_kernel.cu",
+      "git_blob_sha1": "480b17d21d168b517c2eb3631687d33708c75d38",
+      "sha256": "10249a50a14bd580670410574203ceceb468b3ed176313c046109acf8b664d1b",
+      "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/20/variance_kernel.cu"
+    }
+  ],
+  "nbody": "Authored force-only grid-stride adaptation of NVIDIA tiled all-pairs algorithm; no integration or velocity updates.",
+  "syrk": "Kernel body extracted verbatim; compile-time stride macros map to runtime parameters."
+}

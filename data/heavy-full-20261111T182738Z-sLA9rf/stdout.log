@@ -1,0 +1,137 @@
+Calibrating gemm m=512 n=512 k=256
+  reference 0.162 ms (sub_ms_control)
+Calibrating gemm m=1024 n=1024 k=1024
+  reference 2.342 ms (1_to_5_ms)
+Calibrating gemm m=2048 n=2048 k=2048
+  reference 19.051 ms (5_to_50_ms)
+Calibrating gemm m=4096 n=4096 k=4096
+  reference 124.167 ms (50_to_500_ms)
+Calibrating gemm m=4096 n=4096 k=8192
+  reference 228.540 ms (50_to_500_ms)
+Calibrating gemm m=8192 n=8192 k=8192
+  reference 981.336 ms (0.5_to_1_second)
+Calibrating gemm m=8192 n=8192 k=16384
+  reference 1989.386 ms (1_to_5_seconds)
+Calibrating segmented_sum m=256 n=1 k=1024
+  reference 0.152 ms (sub_ms_control)
+Calibrating segmented_sum m=1024 n=1 k=4096
+  reference 0.591 ms (sub_ms_control)
+Calibrating segmented_sum m=2048 n=1 k=16384
+  reference 3.348 ms (1_to_5_ms)
+Calibrating segmented_sum m=4096 n=1 k=65536
+  reference 13.783 ms (5_to_50_ms)
+Calibrating segmented_sum m=1024 n=1 k=262144
+  reference 52.107 ms (50_to_500_ms)
+Calibrating segmented_sum m=256 n=1 k=1048576
+  reference 143.286 ms (50_to_500_ms)
+Calibrating mean m=256 n=1 k=1024
+  reference 0.164 ms (sub_ms_control)
+Calibrating mean m=1024 n=1 k=4096
+  reference 0.665 ms (sub_ms_control)
+Calibrating mean m=2048 n=1 k=16384
+  reference 2.740 ms (1_to_5_ms)
+Calibrating mean m=4096 n=1 k=65536
+  reference 16.267 ms (5_to_50_ms)
+Calibrating mean m=1024 n=1 k=262144
+  reference 59.794 ms (50_to_500_ms)
+Calibrating mean m=256 n=1 k=1048576
+  reference 181.185 ms (50_to_500_ms)
+Calibrating variance m=256 n=1 k=1024
+  reference 6.851 ms (5_to_50_ms)
+Calibrating variance m=1024 n=1 k=4096
+  reference 27.475 ms (5_to_50_ms)
+Calibrating variance m=2048 n=1 k=16384
+  reference 115.821 ms (50_to_500_ms)
+Calibrating variance m=4096 n=1 k=65536
+  reference 436.507 ms (50_to_500_ms)
+Calibrating variance m=1024 n=1 k=262144
+  Worker result identity mismatch
+Calibrating variance m=256 n=1 k=1048576
+  Worker result identity mismatch
+Calibrating syrk m=512 n=512 k=512
+  reference 1.392 ms (1_to_5_ms)
+Calibrating syrk m=1024 n=1024 k=1024
+  reference 10.555 ms (5_to_50_ms)
+Calibrating syrk m=2048 n=2048 k=2048
+  reference 83.358 ms (50_to_500_ms)
+Calibrating syrk m=4096 n=4096 k=4096
+  reference 667.729 ms (0.5_to_1_second)
+Calibrating syrk m=4096 n=4096 k=8192
+  reference 1335.802 ms (1_to_5_seconds)
+Calibrating nbody m=8192 n=1 k=1
+  reference 0.306 ms (sub_ms_control)
+Calibrating nbody m=16384 n=1 k=1
+  reference 0.627 ms (sub_ms_control)
+Calibrating nbody m=32768 n=1 k=1
+  reference 2.308 ms (1_to_5_ms)
+Calibrating nbody m=65536 n=1 k=1
+  reference 8.928 ms (5_to_50_ms)
+Calibrating nbody m=131072 n=1 k=1
+  reference 46.878 ms (5_to_50_ms)
+Calibrating nbody m=262144 n=1 k=1
+  reference 148.990 ms (50_to_500_ms)
+Calibrating nbody m=524288 n=1 k=1
+  reference 556.938 ms (0.5_to_1_second)
+Calibrating nbody m=1048576 n=1 k=1
+  reference 2204.074 ms (1_to_5_seconds)
+18 selected shapes, 2320 trials; 16.3 minutes timed work at reference speed (other actions and setup can take longer).
+1/18 segmented_sum_1024_1_262144_0: 160 trials
+  160 accepted, 0 failed
+2/18 gemm_4096_4096_4096_0: 90 trials
+  90 accepted, 0 failed
+3/18 syrk_4096_4096_8192_0: 90 trials
+  90 accepted, 0 failed
+4/18 variance_2048_1_16384_0: 160 trials
+  160 accepted, 0 failed
+5/18 nbody_65536_1_1_0: 160 trials
+  160 accepted, 0 failed
+6/18 syrk_1024_1024_1024_0: 90 trials
+  90 accepted, 0 failed
+7/18 segmented_sum_4096_1_65536_0: 160 trials
+  160 accepted, 0 failed
+8/18 nbody_262144_1_1_0: 160 trials
+  160 accepted, 0 failed
+9/18 nbody_524288_1_1_0: 160 trials
+  160 accepted, 0 failed
+10/18 syrk_2048_2048_2048_0: 90 trials
+  90 accepted, 0 failed
+11/18 nbody_1048576_1_1_0: 160 trials
+  160 accepted, 0 failed
+12/18 gemm_2048_2048_2048_0: 90 trials
+  90 accepted, 0 failed
+13/18 syrk_4096_4096_4096_0: 90 trials
+  90 accepted, 0 failed
+14/18 variance_256_1_1024_0: 160 trials
+  160 accepted, 0 failed
+15/18 mean_1024_1_262144_0: 160 trials
+  160 accepted, 0 failed
+16/18 gemm_8192_8192_8192_0: 90 trials
+  90 accepted, 0 failed
+17/18 mean_4096_1_65536_0: 160 trials
+  160 accepted, 0 failed
+18/18 gemm_8192_8192_16384_0: 90 trials
+  90 accepted, 0 failed
+{
+  "status": "COMPLETE",
+  "heavy_protocol_revision": 1,
+  "planned_trials": 2320,
+  "recorded_trials": 2320,
+  "failed_trials": 0,
+  "missing_trials": 0,
+  "contexts": 18,
+  "actions": 232,
+  "valid_actions": 232,
+  "usable_reward_rows": 232,
+  "reference_seconds_contexts": 4,
+  "complete_contexts": 18,
+  "noisy_actions_over_5pct": 4,
+  "successful_calibrations": 36,
+  "failed_or_memory_limited_calibrations": 2,
+  "kernels_without_selected_shapes": [],
+  "seconds_target_unreached": [
+    "segmented_sum",
+    "mean",
+    "variance"
+  ],
+  "validation_errors": []
+}
