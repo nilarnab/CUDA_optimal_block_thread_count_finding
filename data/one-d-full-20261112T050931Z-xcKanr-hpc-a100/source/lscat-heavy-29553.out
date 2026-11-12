@@ -1,0 +1,3 @@
+/ext3/miniforge3/bin/python
+Results: /scratch/sm12779/GPU/ls_cat_pilot_1d/runs/one-d-full-20261112T050931Z-xcKanr
+CUDA_VISIBLE_DEVICES is preserved. Selected CUDA logical device: 0

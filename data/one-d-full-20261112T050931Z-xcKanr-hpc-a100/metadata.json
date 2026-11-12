@@ -1,0 +1,187 @@
+{
+  "csv_format": "ls_cat_pilot_first_version",
+  "heavy_protocol_revision": 1,
+  "collection_profile": "twelve_1d_kernels_16_actions",
+  "session_id": "one-d-full-20261112T050931Z-xcKanr",
+  "started_utc": "2026-11-12T05:09:45.041326+00:00",
+  "mode": "full",
+  "kernels": [
+    "vector_add",
+    "segmented_sum",
+    "periodic_tile",
+    "repeat_vector",
+    "matrix_transpose",
+    "mean",
+    "variance",
+    "nbody",
+    "binarize_weights",
+    "binarize_input",
+    "softmax",
+    "accumulate"
+  ],
+  "device": {
+    "gpu_name": "NVIDIA A100-SXM4-40GB",
+    "pci_bus_id": "0000:00:04.0",
+    "sm_count": 108,
+    "compute_capability": "8.0",
+    "driver_version": 13030,
+    "runtime_version": 13000,
+    "free_bytes": 41981575168,
+    "total_bytes": 42430300160,
+    "max_threads_per_block": 1024,
+    "max_block_dim_x": 1024,
+    "max_block_dim_y": 1024,
+    "max_grid_dim_x": 2147483647,
+    "max_grid_dim_y": 65535,
+    "kernels": {
+      "vector_add": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 12,
+        "static_shared_bytes": 0
+      },
+      "segmented_sum": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 26,
+        "static_shared_bytes": 0
+      },
+      "periodic_tile": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 16,
+        "static_shared_bytes": 0
+      },
+      "repeat_vector": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 8,
+        "static_shared_bytes": 0
+      },
+      "matrix_transpose": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 18,
+        "static_shared_bytes": 0
+      },
+      "mean": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 22,
+        "static_shared_bytes": 0
+      },
+      "variance": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 34,
+        "static_shared_bytes": 0
+      },
+      "nbody": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 32,
+        "static_shared_bytes": 0
+      },
+      "binarize_weights": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 31,
+        "static_shared_bytes": 0
+      },
+      "binarize_input": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 32,
+        "static_shared_bytes": 0
+      },
+      "softmax": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 31,
+        "static_shared_bytes": 0
+      },
+      "accumulate": {
+        "max_threads_per_block": 1024,
+        "registers_per_thread": 28,
+        "static_shared_bytes": 0
+      }
+    }
+  },
+  "grid_search": "coverage",
+  "session_seed": 1287332642428759117,
+  "input_seeds": 1,
+  "repeats": 10,
+  "max_device_bytes": 2147483648,
+  "probe_timeout_s": 180,
+  "worker_timeout_s": 3600,
+  "assumed_prediction_ms": 0.8,
+  "timing_method": "one kernel launch between CUDA events; one warmup per action per worker",
+  "correctness": "full CPU output reference for <=4096 output elements; otherwise 64 deterministic CPU samples plus all-output finite scan and both guards",
+  "grouping": "Keep every shape/seed/session of a split_group together when evaluating unseen source",
+  "provenance": {
+    "sources": [
+      {
+        "path": "upstream/nbody.cu",
+        "git_blob_sha1": "c6e305b787f8f1457b7da290c23d925d5321321b",
+        "sha256": "a29a80064208700d567dba70764d3282446f9ee6f27722483a7314f1bf6a4e55",
+        "url": "https://github.com/NVIDIA/cuda-samples/blob/master/cpp/5_Domain_Specific/nbody/bodysystemcuda.cu"
+      },
+      {
+        "path": "kernels/gpuSum.cu",
+        "git_blob_sha1": "6d4f9efc21619f6c8bf5fecb88ad685edabcc939",
+        "sha256": "a435cf5d7b3f350120e332cb6efa61c4ef49943fbbcc5ce2d87ca92ec51e653a",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10040/1/gpuSum.cu"
+      },
+      {
+        "path": "kernels/mean_kernel.cu",
+        "git_blob_sha1": "ff33016901e6e1407aa84e8ec743a643b3353b83",
+        "sha256": "d10b398cecc6aa8fddfbfab37f43ef219c6847aed20a9c194950845233f16975",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/19/mean_kernel.cu"
+      },
+      {
+        "path": "kernels/variance_kernel.cu",
+        "git_blob_sha1": "480b17d21d168b517c2eb3631687d33708c75d38",
+        "sha256": "10249a50a14bd580670410574203ceceb468b3ed176313c046109acf8b664d1b",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/20/variance_kernel.cu"
+      },
+      {
+        "path": "kernels/add.cu",
+        "git_blob_sha1": "7778be56d8bb284d9a2fcb432361972e2c1c777b",
+        "sha256": "6b2393df0a9a066fdc92708a2bb5d7db78dc3ee4583b631d7415caa1067808e6",
+        "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10047/0/add.cu"
+      },
+      {
+        "path": "kernels/kTile.cu",
+        "git_blob_sha1": "0774662cf91a016989129fad5efc1a71ed4db81a",
+        "sha256": "f8ac17ebb3cbeebafa35ea4b53c81b8261ef886f3880db19b6821016eac96656",
+        "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10073/223/kTile.cu"
+      },
+      {
+        "path": "kernels/times.cu",
+        "git_blob_sha1": "df46f9a1c915784acf2e3f2d7c7df5f5feb48deb",
+        "sha256": "05bd285a873fd303fb7b6375130bfc3c0902bbaca5851187a5a640c3cc2305ef",
+        "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/1018/5/times.cu"
+      },
+      {
+        "path": "kernels/flatten_kernel.cu",
+        "git_blob_sha1": "0a6d7841fd94be0e737082f799374f0e154a3f1d",
+        "sha256": "37647625b2e16c99f24116e2b6ab26c1d0618b8c2900841b702de2865fc09f21",
+        "url": "https://raw.githubusercontent.com/NTNU-HPC-Lab/LS-CAT/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/34/flatten_kernel.cu"
+      },
+      {
+        "path": "kernels/binarize_weights_kernel.cu",
+        "git_blob_sha1": "13eaec58978fea36b65852243de2da8aec479c8e",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/2/binarize_weights_kernel.cu",
+        "sha256": "d9d1ba87039ab7f773ae98945eaf1be2a3dbc8cb67a62220cd24f4898873c6ba"
+      },
+      {
+        "path": "kernels/binarize_input_kernel.cu",
+        "git_blob_sha1": "324fe89eba52861901a7eec77a7495ad8cd857c9",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/1/binarize_input_kernel.cu",
+        "sha256": "d525b552aa5e395f1fe0630f151ade0569ba332879f48582d901ce048154f83b"
+      },
+      {
+        "path": "kernels/softmax_kernel.cu",
+        "git_blob_sha1": "76e9ca8d36042abc1e212490e5f9a39d10ee2550",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/41/softmax_kernel.cu",
+        "sha256": "081e64d2313c7b246614fcef4597e0b5d08d9c736a18def16cc40502cd7457d7"
+      },
+      {
+        "path": "kernels/accumulate_kernel.cu",
+        "git_blob_sha1": "d2dbed595c75c8e5f2d32748862f7047eca61280",
+        "url": "https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10194/15/accumulate_kernel.cu",
+        "sha256": "74b8ac21db13007f04278a9c970e3e75c12c408d7f2b6680cea4b59315114604"
+      }
+    ],
+    "nbody": "Authored force-only grid-stride adaptation of NVIDIA tiled all-pairs algorithm; no integration or velocity updates."
+  }
+}

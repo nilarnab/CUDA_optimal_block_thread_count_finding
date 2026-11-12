@@ -1,0 +1,283 @@
+Calibrating vector_add m=240 n=1 k=1
+  reference 0.011 ms (sub_ms_control)
+Calibrating vector_add m=1024 n=1 k=1
+  reference 0.016 ms (sub_ms_control)
+Calibrating vector_add m=2048 n=1 k=1
+  reference 0.048 ms (sub_ms_control)
+Calibrating vector_add m=4096 n=1 k=1
+  reference 0.160 ms (sub_ms_control)
+Calibrating vector_add m=8192 n=1 k=1
+  reference 0.603 ms (sub_ms_control)
+Calibrating vector_add m=12288 n=1 k=1
+  reference 1.337 ms (1_to_5_ms)
+Calibrating segmented_sum m=256 n=1 k=1024
+  reference 0.196 ms (sub_ms_control)
+Calibrating segmented_sum m=1024 n=1 k=4096
+  reference 0.758 ms (sub_ms_control)
+Calibrating segmented_sum m=2048 n=1 k=16384
+  reference 3.019 ms (1_to_5_ms)
+Calibrating segmented_sum m=4096 n=1 k=65536
+  reference 15.561 ms (5_to_50_ms)
+Calibrating segmented_sum m=1024 n=1 k=262144
+  reference 49.454 ms (5_to_50_ms)
+Calibrating segmented_sum m=256 n=1 k=1048576
+  reference 192.297 ms (50_to_500_ms)
+Calibrating segmented_sum m=128 n=1 k=2097152
+  reference 196.013 ms (50_to_500_ms)
+Calibrating segmented_sum m=64 n=1 k=4194304
+  reference 252.643 ms (50_to_500_ms)
+Calibrating segmented_sum m=32 n=1 k=8388608
+  reference 503.448 ms (0.5_to_1_second)
+Calibrating segmented_sum m=16 n=1 k=16777216
+  reference 764.528 ms (0.5_to_1_second)
+Calibrating periodic_tile m=240 n=1 k=1
+  reference 0.012 ms (sub_ms_control)
+Calibrating periodic_tile m=1024 n=1 k=1
+  reference 0.019 ms (sub_ms_control)
+Calibrating periodic_tile m=2048 n=1 k=1
+  reference 0.037 ms (sub_ms_control)
+Calibrating periodic_tile m=4096 n=1 k=1
+  reference 0.101 ms (sub_ms_control)
+Calibrating periodic_tile m=8192 n=1 k=1
+  reference 0.381 ms (sub_ms_control)
+Calibrating periodic_tile m=12288 n=1 k=1
+  reference 0.837 ms (sub_ms_control)
+Calibrating periodic_tile m=16384 n=1 k=1
+  reference 1.891 ms (1_to_5_ms)
+Calibrating periodic_tile m=22528 n=1 k=1
+  reference 3.330 ms (1_to_5_ms)
+Calibrating repeat_vector m=240 n=1 k=1
+  reference 0.011 ms (sub_ms_control)
+Calibrating repeat_vector m=1024 n=1 k=1
+  reference 0.014 ms (sub_ms_control)
+Calibrating repeat_vector m=2048 n=1 k=1
+  reference 0.025 ms (sub_ms_control)
+Calibrating repeat_vector m=4096 n=1 k=1
+  reference 0.059 ms (sub_ms_control)
+Calibrating repeat_vector m=8192 n=1 k=1
+  reference 0.207 ms (sub_ms_control)
+Calibrating repeat_vector m=12288 n=1 k=1
+  reference 0.454 ms (sub_ms_control)
+Calibrating repeat_vector m=16384 n=1 k=1
+  reference 0.789 ms (sub_ms_control)
+Calibrating repeat_vector m=22528 n=1 k=1
+  reference 1.486 ms (1_to_5_ms)
+Calibrating matrix_transpose m=240 n=1 k=1
+  reference 0.014 ms (sub_ms_control)
+Calibrating matrix_transpose m=1024 n=1 k=1
+  reference 0.041 ms (sub_ms_control)
+Calibrating matrix_transpose m=2048 n=1 k=1
+  reference 0.111 ms (sub_ms_control)
+Calibrating matrix_transpose m=4096 n=1 k=1
+  reference 0.592 ms (sub_ms_control)
+Calibrating matrix_transpose m=8192 n=1 k=1
+  reference 2.413 ms (1_to_5_ms)
+Calibrating matrix_transpose m=12288 n=1 k=1
+  reference 5.340 ms (5_to_50_ms)
+Calibrating mean m=256 n=1 k=1024
+  reference 0.218 ms (sub_ms_control)
+Calibrating mean m=1024 n=1 k=4096
+  reference 0.853 ms (sub_ms_control)
+Calibrating mean m=2048 n=1 k=16384
+  reference 3.444 ms (1_to_5_ms)
+Calibrating mean m=4096 n=1 k=65536
+  reference 13.746 ms (5_to_50_ms)
+Calibrating mean m=1024 n=1 k=262144
+  reference 70.596 ms (50_to_500_ms)
+Calibrating mean m=256 n=1 k=1048576
+  reference 219.451 ms (50_to_500_ms)
+Calibrating mean m=128 n=1 k=2097152
+  reference 276.728 ms (50_to_500_ms)
+Calibrating mean m=64 n=1 k=4194304
+  reference 504.937 ms (0.5_to_1_second)
+Calibrating mean m=32 n=1 k=8388608
+  reference 1008.841 ms (1_to_2_seconds)
+Calibrating variance m=256 n=1 k=1024
+  reference 0.711 ms (sub_ms_control)
+Calibrating variance m=1024 n=1 k=4096
+  reference 2.820 ms (1_to_5_ms)
+Calibrating variance m=2048 n=1 k=16384
+  reference 12.097 ms (5_to_50_ms)
+Calibrating variance m=4096 n=1 k=65536
+  reference 61.441 ms (50_to_500_ms)
+Calibrating variance m=1024 n=1 k=262144
+  incorrect output at 305
+Calibrating variance m=256 n=1 k=1048576
+  incorrect output at 10
+Calibrating variance m=128 n=1 k=2097152
+  incorrect output at 0
+Calibrating variance m=64 n=1 k=4194304
+  incorrect output at 0
+Calibrating variance m=32 n=1 k=8388608
+  reference 5228.451 ms (over_2_seconds)
+Calibrating nbody m=8192 n=1 k=1
+  reference 0.497 ms (sub_ms_control)
+Calibrating nbody m=16384 n=1 k=1
+  reference 0.985 ms (sub_ms_control)
+Calibrating nbody m=32768 n=1 k=1
+  reference 3.310 ms (1_to_5_ms)
+Calibrating nbody m=65536 n=1 k=1
+  reference 9.636 ms (5_to_50_ms)
+Calibrating nbody m=131072 n=1 k=1
+  reference 31.139 ms (5_to_50_ms)
+Calibrating nbody m=262144 n=1 k=1
+  reference 121.510 ms (50_to_500_ms)
+Calibrating nbody m=524288 n=1 k=1
+  reference 457.447 ms (50_to_500_ms)
+Calibrating nbody m=786432 n=1 k=1
+  reference 1040.978 ms (1_to_2_seconds)
+Calibrating binarize_weights m=128 n=1 k=1024
+  reference 0.329 ms (sub_ms_control)
+Calibrating binarize_weights m=256 n=1 k=4096
+  reference 2.474 ms (1_to_5_ms)
+Calibrating binarize_weights m=512 n=1 k=16384
+  reference 10.022 ms (5_to_50_ms)
+Calibrating binarize_weights m=1024 n=1 k=65536
+  reference 40.112 ms (5_to_50_ms)
+Calibrating binarize_weights m=512 n=1 k=262144
+  reference 160.345 ms (50_to_500_ms)
+Calibrating binarize_weights m=128 n=1 k=1048576
+  reference 323.602 ms (50_to_500_ms)
+Calibrating binarize_weights m=64 n=1 k=2097152
+  reference 471.847 ms (50_to_500_ms)
+Calibrating binarize_weights m=32 n=1 k=4194304
+  reference 886.756 ms (0.5_to_1_second)
+Calibrating binarize_weights m=16 n=1 k=8388608
+  reference 1401.535 ms (1_to_2_seconds)
+Calibrating binarize_input m=128 n=1 k=1024
+  reference 0.197 ms (sub_ms_control)
+Calibrating binarize_input m=256 n=1 k=4096
+  reference 0.748 ms (sub_ms_control)
+Calibrating binarize_input m=512 n=1 k=16384
+  reference 8.411 ms (5_to_50_ms)
+Calibrating binarize_input m=1024 n=1 k=65536
+  reference 33.133 ms (5_to_50_ms)
+Calibrating binarize_input m=512 n=1 k=262144
+  reference 134.492 ms (50_to_500_ms)
+Calibrating binarize_input m=128 n=1 k=1048576
+  reference 535.982 ms (0.5_to_1_second)
+Calibrating binarize_input m=64 n=1 k=2097152
+  reference 996.049 ms (0.5_to_1_second)
+Calibrating binarize_input m=32 n=1 k=4194304
+  reference 1922.547 ms (1_to_2_seconds)
+Calibrating softmax m=128 n=1 k=1024
+  reference 0.673 ms (sub_ms_control)
+Calibrating softmax m=256 n=1 k=4096
+  reference 4.699 ms (1_to_5_ms)
+Calibrating softmax m=512 n=1 k=16384
+  reference 18.834 ms (5_to_50_ms)
+Calibrating softmax m=1024 n=1 k=65536
+  reference 75.409 ms (50_to_500_ms)
+Calibrating softmax m=512 n=1 k=262144
+  reference 301.776 ms (50_to_500_ms)
+Calibrating softmax m=128 n=1 k=1048576
+  reference 696.828 ms (0.5_to_1_second)
+Calibrating softmax m=64 n=1 k=2097152
+  reference 1125.547 ms (1_to_2_seconds)
+Calibrating accumulate m=256 n=1 k=1024
+  reference 0.170 ms (sub_ms_control)
+Calibrating accumulate m=1024 n=1 k=4096
+  reference 0.668 ms (sub_ms_control)
+Calibrating accumulate m=2048 n=1 k=16384
+  reference 7.432 ms (5_to_50_ms)
+Calibrating accumulate m=4096 n=1 k=65536
+  reference 37.915 ms (5_to_50_ms)
+Calibrating accumulate m=1024 n=1 k=262144
+  reference 118.517 ms (50_to_500_ms)
+Calibrating accumulate m=256 n=1 k=1048576
+  reference 496.803 ms (50_to_500_ms)
+Calibrating accumulate m=128 n=1 k=2097152
+  reference 987.987 ms (0.5_to_1_second)
+Calibrating accumulate m=64 n=1 k=4194304
+  reference 1847.246 ms (1_to_2_seconds)
+32 selected shapes, 5120 trials; 36.0 minutes timed work at reference speed (other actions and setup can take longer).
+1/32 binarize_weights_32_1_4194304_0: 160 trials
+  160 accepted, 0 failed
+2/32 nbody_65536_1_1_0: 160 trials
+  160 accepted, 0 failed
+3/32 softmax_1024_1_65536_0: 160 trials
+  160 accepted, 0 failed
+4/32 softmax_64_1_2097152_0: 160 trials
+  160 accepted, 0 failed
+5/32 segmented_sum_32_1_8388608_0: 160 trials
+  160 accepted, 0 failed
+6/32 matrix_transpose_12288_1_1_0: 160 trials
+  160 accepted, 0 failed
+7/32 binarize_weights_16_1_8388608_0: 160 trials
+  160 accepted, 0 failed
+8/32 mean_1024_1_262144_0: 160 trials
+  160 accepted, 0 failed
+9/32 softmax_128_1_1048576_0: 160 trials
+  160 accepted, 0 failed
+10/32 accumulate_2048_1_16384_0: 160 trials
+  160 accepted, 0 failed
+11/32 repeat_vector_22528_1_1_0: 160 trials
+  160 accepted, 0 failed
+12/32 binarize_input_32_1_4194304_0: 160 trials
+  160 accepted, 0 failed
+13/32 segmented_sum_4096_1_65536_0: 160 trials
+  160 accepted, 0 failed
+14/32 binarize_input_512_1_262144_0: 160 trials
+  160 accepted, 0 failed
+15/32 periodic_tile_22528_1_1_0: 160 trials
+  160 accepted, 0 failed
+16/32 mean_64_1_4194304_0: 160 trials
+  160 accepted, 0 failed
+17/32 vector_add_12288_1_1_0: 160 trials
+  160 accepted, 0 failed
+18/32 binarize_input_128_1_1048576_0: 160 trials
+  160 accepted, 0 failed
+19/32 variance_2048_1_16384_0: 160 trials
+  160 accepted, 0 failed
+20/32 accumulate_1024_1_262144_0: 160 trials
+  160 accepted, 0 failed
+21/32 mean_32_1_8388608_0: 160 trials
+  160 accepted, 0 failed
+22/32 variance_4096_1_65536_0: 160 trials
+  160 accepted, 0 failed
+23/32 accumulate_64_1_4194304_0: 160 trials
+  160 accepted, 0 failed
+24/32 binarize_weights_512_1_16384_0: 160 trials
+  160 accepted, 0 failed
+25/32 binarize_input_512_1_16384_0: 160 trials
+  160 accepted, 0 failed
+26/32 binarize_weights_512_1_262144_0: 160 trials
+  160 accepted, 0 failed
+27/32 softmax_512_1_16384_0: 160 trials
+  160 accepted, 0 failed
+28/32 nbody_786432_1_1_0: 160 trials
+  160 accepted, 0 failed
+29/32 mean_4096_1_65536_0: 160 trials
+  160 accepted, 0 failed
+30/32 segmented_sum_256_1_1048576_0: 160 trials
+  160 accepted, 0 failed
+31/32 nbody_262144_1_1_0: 160 trials
+  160 accepted, 0 failed
+32/32 accumulate_128_1_2097152_0: 160 trials
+  160 accepted, 0 failed
+{
+  "status": "COMPLETE",
+  "heavy_protocol_revision": 1,
+  "planned_trials": 5120,
+  "recorded_trials": 5120,
+  "failed_trials": 0,
+  "missing_trials": 0,
+  "contexts": 32,
+  "actions": 512,
+  "valid_actions": 512,
+  "usable_reward_rows": 512,
+  "reference_seconds_contexts": 12,
+  "complete_contexts": 32,
+  "noisy_actions_over_5pct": 3,
+  "successful_calibrations": 92,
+  "failed_or_memory_limited_calibrations": 12,
+  "kernels_without_selected_shapes": [],
+  "seconds_target_unreached": [
+    "vector_add",
+    "periodic_tile",
+    "repeat_vector",
+    "matrix_transpose",
+    "variance"
+  ],
+  "validation_errors": []
+}

@@ -1,0 +1,37 @@
+Started UTC: 2026-11-12T05:09:31Z
+Mode: full
+CUDA logical device: 0
+b-19-16
+Linux 5.14.0-687.24.1.el9_8.x86_64 x86_64
+/usr/local/cuda/bin/nvcc
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Wed_Aug_20_01:58:59_PM_PDT_2025
+Cuda compilation tools, release 13.0, V13.0.88
+Build cuda_13.0.r13.0/compiler.36424714_0
+Python 3.14.7
+cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+Copyright (C) 2023 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+c++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+Copyright (C) 2023 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+CUDA_VISIBLE_DEVICES=0
+NVIDIA_VISIBLE_DEVICES=all
+SLURM_JOB_ID=29553
+SLURM_JOB_NODELIST=b-19-16
+SLURM_JOB_GPUS=0
+SLURM_STEP_GPUS=unset
+SLURM_CPUS_PER_TASK=2
+SLURM_ARRAY_TASK_ID=unset
+index, uuid, pci.bus_id, name, driver_version
+0, GPU-33fe5180-4409-fcd7-d5b9-146db86dc790, 00000000:00:04.0, NVIDIA A100-SXM4-40GB, 610.43.02
+
+Finished UTC: 2026-11-12T06:18:12Z
+Exit status: 0
+index, uuid, pci.bus_id, name, driver_version
+0, GPU-33fe5180-4409-fcd7-d5b9-146db86dc790, 00000000:00:04.0, NVIDIA A100-SXM4-40GB, 610.43.02
