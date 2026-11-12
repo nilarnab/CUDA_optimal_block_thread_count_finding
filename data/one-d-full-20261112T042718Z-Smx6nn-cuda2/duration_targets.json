@@ -1,0 +1,190 @@
+[
+  {
+    "kernel_id": "vector_add",
+    "measured_reference_ms": [
+      3.30521595478
+    ],
+    "reached_ms": {
+      "5": false,
+      "50": false,
+      "500": false,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": false,
+    "fast_control_only": true
+  },
+  {
+    "kernel_id": "segmented_sum",
+    "measured_reference_ms": [
+      9.578239917754999,
+      37.06159973145
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": false,
+      "500": false,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": false,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "periodic_tile",
+    "measured_reference_ms": [
+      3.4890400171250002
+    ],
+    "reached_ms": {
+      "5": false,
+      "50": false,
+      "500": false,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": false,
+    "fast_control_only": true
+  },
+  {
+    "kernel_id": "repeat_vector",
+    "measured_reference_ms": [
+      3.4644479751599997
+    ],
+    "reached_ms": {
+      "5": false,
+      "50": false,
+      "500": false,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": false,
+    "fast_control_only": true
+  },
+  {
+    "kernel_id": "matrix_transpose",
+    "measured_reference_ms": [
+      6.17707204819
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": false,
+      "500": false,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": false,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "mean",
+    "measured_reference_ms": [
+      11.72302389145,
+      44.24793624875,
+      554.087036133
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": false
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "variance",
+    "measured_reference_ms": [
+      1784.78076172,
+      6.97804808617,
+      109.853199005
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "nbody",
+    "measured_reference_ms": [
+      1348.10620117,
+      584.6083068845,
+      148.0084609985,
+      9.080272197725
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "binarize_weights",
+    "measured_reference_ms": [
+      521.06338501,
+      140.190849304,
+      9.070767879485,
+      1298.904785155
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "binarize_input",
+    "measured_reference_ms": [
+      1164.4788818349998,
+      24.97972774505,
+      585.503112793,
+      79.5788154602
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "softmax",
+    "measured_reference_ms": [
+      58.29652786255,
+      1284.29498291,
+      675.2355346679999,
+      14.52606391905
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  },
+  {
+    "kernel_id": "accumulate",
+    "measured_reference_ms": [
+      1073.2807006799999,
+      4.45206403732,
+      70.75706863405,
+      539.1999206544999
+    ],
+    "reached_ms": {
+      "5": true,
+      "50": true,
+      "500": true,
+      "1000": true
+    },
+    "reached_0_5_to_2_seconds": true,
+    "fast_control_only": false
+  }
+]

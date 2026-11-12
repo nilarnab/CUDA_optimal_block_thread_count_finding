@@ -1,0 +1,258 @@
+[
+  {
+    "kernel_id": "binarize_weights",
+    "m": 32,
+    "n": 1,
+    "k": 4194304,
+    "reference_calibration_ms": 521.169067383,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "variance",
+    "m": 1024,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 1775.16748047,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "variance",
+    "m": 256,
+    "n": 1,
+    "k": 1024,
+    "reference_calibration_ms": 6.95455980301,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "nbody",
+    "m": 786432,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 1276.20263672,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "vector_add",
+    "m": 12288,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 3.30652809143,
+    "runtime_tier": "1_to_5_ms"
+  },
+  {
+    "kernel_id": "softmax",
+    "m": 1024,
+    "n": 1,
+    "k": 65536,
+    "reference_calibration_ms": 75.2632675171,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "periodic_tile",
+    "m": 22528,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 3.48767995834,
+    "runtime_tier": "1_to_5_ms"
+  },
+  {
+    "kernel_id": "accumulate",
+    "m": 64,
+    "n": 1,
+    "k": 4194304,
+    "reference_calibration_ms": 1078.20239258,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "binarize_weights",
+    "m": 512,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 138.292160034,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "mean",
+    "m": 4096,
+    "n": 1,
+    "k": 65536,
+    "reference_calibration_ms": 15.4889602661,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "binarize_input",
+    "m": 32,
+    "n": 1,
+    "k": 4194304,
+    "reference_calibration_ms": 1170.3671875,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "accumulate",
+    "m": 2048,
+    "n": 1,
+    "k": 16384,
+    "reference_calibration_ms": 5.60380792618,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "nbody",
+    "m": 524288,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 569.245788574,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "matrix_transpose",
+    "m": 12288,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 8.05088043213,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "repeat_vector",
+    "m": 22528,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 3.46582388878,
+    "runtime_tier": "1_to_5_ms"
+  },
+  {
+    "kernel_id": "binarize_input",
+    "m": 1024,
+    "n": 1,
+    "k": 65536,
+    "reference_calibration_ms": 25.0242881775,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "variance",
+    "m": 2048,
+    "n": 1,
+    "k": 16384,
+    "reference_calibration_ms": 133.204284668,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "softmax",
+    "m": 32,
+    "n": 1,
+    "k": 4194304,
+    "reference_calibration_ms": 1292.6619873,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "binarize_input",
+    "m": 64,
+    "n": 1,
+    "k": 2097152,
+    "reference_calibration_ms": 588.840209961,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "accumulate",
+    "m": 1024,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 81.6906204224,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "nbody",
+    "m": 262144,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 146.389785767,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "segmented_sum",
+    "m": 4096,
+    "n": 1,
+    "k": 65536,
+    "reference_calibration_ms": 13.4994239807,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "binarize_weights",
+    "m": 512,
+    "n": 1,
+    "k": 16384,
+    "reference_calibration_ms": 9.06480026245,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "binarize_input",
+    "m": 512,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 84.3807983398,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "softmax",
+    "m": 64,
+    "n": 1,
+    "k": 2097152,
+    "reference_calibration_ms": 681.481140137,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "mean",
+    "m": 1024,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 60.7096977234,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "binarize_weights",
+    "m": 8,
+    "n": 1,
+    "k": 16777216,
+    "reference_calibration_ms": 1308.40356445,
+    "runtime_tier": "1_to_2_seconds"
+  },
+  {
+    "kernel_id": "accumulate",
+    "m": 128,
+    "n": 1,
+    "k": 2097152,
+    "reference_calibration_ms": 541.645812988,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "mean",
+    "m": 32,
+    "n": 1,
+    "k": 8388608,
+    "reference_calibration_ms": 550.753112793,
+    "runtime_tier": "0.5_to_1_second"
+  },
+  {
+    "kernel_id": "softmax",
+    "m": 512,
+    "n": 1,
+    "k": 16384,
+    "reference_calibration_ms": 14.5508804321,
+    "runtime_tier": "5_to_50_ms"
+  },
+  {
+    "kernel_id": "segmented_sum",
+    "m": 1024,
+    "n": 1,
+    "k": 262144,
+    "reference_calibration_ms": 52.5492782593,
+    "runtime_tier": "50_to_500_ms"
+  },
+  {
+    "kernel_id": "nbody",
+    "m": 65536,
+    "n": 1,
+    "k": 1,
+    "reference_calibration_ms": 9.00489616394,
+    "runtime_tier": "5_to_50_ms"
+  }
+]
