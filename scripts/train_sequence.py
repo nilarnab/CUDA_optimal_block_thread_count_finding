@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import asdict
 from functools import partial
 import hashlib
@@ -39,12 +40,14 @@ def build_model(matrix, context_size: int, action_count: int, architecture: str)
     )
 
 
-def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, seed=0, validation_kernels=2):
+def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, seed=0,
+                  validation_kernels=2, problem_columns=("problem_size",),
+                  split_groups=None, validation_groups=2):
     import torch
 
     from data.dataset import KernelRuntimeDataset
     from data.runtime_table import RuntimeTable
-    from data.splits import split_train_validation_kernel_ids
+    from data.splits import split_grouped_kernel_ids, split_train_validation_kernel_ids
     from launch.configuration_catalog import ConfigurationCatalog
 
     if not isinstance(matrix, torch.Tensor) or matrix.ndim != 2 or min(matrix.shape) < 1:
@@ -54,7 +57,18 @@ def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, see
     if not math.isfinite(exponent) or exponent <= 0:
         raise ValueError("target exponent must be finite and positive")
     catalog = ConfigurationCatalog.lscat()
-    table = RuntimeTable.from_csv(runtime_path)
+    with Path(runtime_path).open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if "split_group" in (reader.fieldnames or ()):
+            recorded_groups = {}
+            for row in reader:
+                kernel, group = row["kernel_id"], row["split_group"]
+                if kernel in recorded_groups and recorded_groups[kernel] != group:
+                    raise ValueError(f"inconsistent CSV split group for {kernel}")
+                recorded_groups[kernel] = group
+            if recorded_groups != split_groups:
+                raise ValueError("CSV source groups require the matching --split-groups JSON")
+    table = RuntimeTable.from_csv(runtime_path, problem_columns=problem_columns)
     tokens = json.loads(Path(token_path).read_text(encoding="utf-8"))
     if not isinstance(tokens, dict):
         raise ValueError("token IDs must be a JSON mapping from kernel IDs to lists")
@@ -74,14 +88,26 @@ def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, see
         if not table.has_complete_context(key, catalog):
             raise ValueError(f"{key}: missing measurements from the 16-action catalog")
     if split is None:
-        split = asdict(split_train_validation_kernel_ids(
-            kernel_ids, seed=seed, validation_kernels=validation_kernels
-        ))
+        if split_groups is None:
+            split = asdict(split_train_validation_kernel_ids(
+                kernel_ids, seed=seed, validation_kernels=validation_kernels
+            ))
+        else:
+            split = asdict(split_grouped_kernel_ids(
+                kernel_ids, split_groups, seed=seed, validation_groups=validation_groups
+            ))
     train_ids, validation_ids = set(split["train"]), set(split["validation"])
     if not train_ids or not validation_ids or train_ids & validation_ids:
         raise ValueError("training and validation kernel sets must be nonempty and disjoint")
     if train_ids | validation_ids != kernel_ids:
         raise ValueError("checkpoint split does not match the runtime table's kernels")
+    if split_groups is not None:
+        if not isinstance(split_groups, dict) or set(split_groups) != kernel_ids or any(
+            not isinstance(group, str) or not group.strip() for group in split_groups.values()
+        ):
+            raise ValueError("split groups must map every kernel to a nonempty group name")
+        if {split_groups[k] for k in train_ids} & {split_groups[k] for k in validation_ids}:
+            raise ValueError("a source group occurs in both training and validation")
 
     def dataset(ids):
         return KernelRuntimeDataset(
@@ -120,6 +146,10 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--validation-kernels", type=int, default=2)
+    parser.add_argument("--problem-columns", nargs="+", default=["problem_size"])
+    parser.add_argument("--split-groups", help="JSON mapping of base kernel IDs to source groups")
+    parser.add_argument("--validation-groups", type=int, default=2,
+                        help="complete groups to reserve when --split-groups is supplied")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--latency-warmup", type=int, default=3)
     parser.add_argument("--latency-repetitions", type=int, default=5)
@@ -144,9 +174,17 @@ def main():
 
     torch.manual_seed(args.seed)
     matrix = torch.load(args.embedding_matrix, map_location="cpu", weights_only=True)
+    split_groups = (
+        json.loads(Path(args.split_groups).read_text(encoding="utf-8"))
+        if args.split_groups else None
+    )
+    if args.split_groups and not isinstance(split_groups, dict):
+        raise ValueError("split-groups JSON must contain a kernel-to-group mapping")
     catalog, split, train_data, validation_data = load_datasets(
         args.runtimes, args.token_ids, matrix, args.target_exponent,
         seed=args.seed, validation_kernels=args.validation_kernels,
+        problem_columns=args.problem_columns, split_groups=split_groups,
+        validation_groups=args.validation_groups,
     )
     context_size = len(train_data[0].problem_size)
     model = build_model(matrix, context_size, len(catalog), args.architecture)
@@ -159,6 +197,8 @@ def main():
         "format_version": 1,
         "architecture": args.architecture,
         "context_size": context_size,
+        "problem_columns": args.problem_columns,
+        "split_groups": split_groups,
         "action_catalog": [asdict(action) for action in catalog],
         "target_exponent": args.target_exponent,
         "split": {name: list(ids) for name, ids in split.items()},

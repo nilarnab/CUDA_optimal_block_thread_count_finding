@@ -20,11 +20,15 @@ def evaluate_checkpoint(path, args):
     metadata = saved["metadata"]
     if metadata.get("format_version") != 1 or "architecture" not in metadata:
         raise ValueError("use a checkpoint produced by scripts/train_sequence.py")
+    metadata.setdefault("problem_columns", ["problem_size"])
+    metadata.setdefault("split_groups", None)
     if metadata["input_fingerprints"] != input_fingerprints(args.runtimes, args.token_ids):
         raise ValueError("runtime/token files differ from the checkpoint's training inputs")
     matrix = saved["model_state"]["token_encoder.embedding.weight"]
     catalog, split, _, validation = load_datasets(
-        args.runtimes, args.token_ids, matrix, metadata["target_exponent"], split=metadata["split"]
+        args.runtimes, args.token_ids, matrix, metadata["target_exponent"],
+        split=metadata["split"], problem_columns=metadata["problem_columns"],
+        split_groups=metadata["split_groups"],
     )
     if metadata["action_catalog"] != [asdict(action) for action in catalog]:
         raise ValueError("action catalog differs from the checkpoint")
@@ -61,6 +65,9 @@ def evaluate_checkpoint(path, args):
         "loss_kind": config.loss, "target_exponent": metadata["target_exponent"],
         "validation_loss": loss, **asdict(metrics),
         "validation_kernels": list(split["validation"]),
+        "problem_columns": metadata["problem_columns"],
+        "validation_groups": sorted({metadata["split_groups"][k] for k in split["validation"]})
+        if metadata["split_groups"] else None,
         "trainable_parameters": metadata["trainable_parameters"],
         "selections": selections,
     }, metadata
@@ -82,7 +89,8 @@ def main():
     report = {"model": result}
     if args.compare:
         baseline, baseline_metadata = evaluate_checkpoint(args.compare, args)
-        for field in ("split", "input_fingerprints", "embedding_sha256", "action_catalog"):
+        for field in ("split", "input_fingerprints", "embedding_sha256", "action_catalog",
+                      "problem_columns", "split_groups"):
             if metadata[field] != baseline_metadata[field]:
                 raise ValueError(f"cannot compare checkpoints with different {field}")
         report["comparison"] = baseline

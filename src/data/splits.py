@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -68,5 +68,27 @@ def split_train_validation_kernel_ids(
     return TrainValidationSplit(
         train=tuple(ordered[:-validation_kernels]),
         validation=tuple(ordered[-validation_kernels:]),
+    )
+
+
+def split_grouped_kernel_ids(
+    kernel_ids: Iterable[str],
+    groups: Mapping[str, str],
+    *,
+    validation_groups: int = 2,
+    seed: int = 0,
+) -> TrainValidationSplit:
+    """Reserve complete source groups rather than individual related kernels."""
+    kernels = set(kernel_ids)
+    if not isinstance(groups, Mapping) or set(groups) != kernels or any(
+        not isinstance(g, str) or not g.strip() for g in groups.values()
+    ):
+        raise ValueError("split groups must map every kernel to a nonempty group name")
+    grouped = split_train_validation_kernel_ids(
+        groups.values(), validation_kernels=validation_groups, seed=seed
+    )
+    return TrainValidationSplit(
+        train=tuple(sorted(kernel for kernel in kernels if groups[kernel] in grouped.train)),
+        validation=tuple(sorted(kernel for kernel in kernels if groups[kernel] in grouped.validation)),
     )
 
