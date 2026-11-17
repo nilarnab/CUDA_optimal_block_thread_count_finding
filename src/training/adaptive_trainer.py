@@ -8,6 +8,7 @@ import torch
 
 from training.metrics import RuntimeMetrics, runtime_metrics
 from training.sequence_trainer import SequenceTrainer
+from training.retention_evaluation import length_evidence
 
 
 class AdaptiveTrainer(SequenceTrainer):
@@ -66,6 +67,9 @@ class AdaptiveTrainer(SequenceTrainer):
             result["h_mean"] = sum(row["learned_h"] for row in rows) / len(rows)
             result["h_min"] = min(row["learned_h"] for row in rows)
             result["h_max"] = max(row["learned_h"] for row in rows)
+            evidence = length_evidence(rows)
+            result["distinct_h"] = evidence["distinct_h_count"]
+            result["nontrivial_variable_length"] = evidence["nontrivial_variable_length"]
         return result, rows
 
     def evaluate(self, batches):
@@ -86,6 +90,8 @@ class AdaptiveTrainer(SequenceTrainer):
                 "validation_expected_h": validation["expected_h"],
                 "validation_h_mean": validation["h_mean"], "validation_h_min": validation["h_min"],
                 "validation_h_max": validation["h_max"],
+                "validation_distinct_h": validation["distinct_h"],
+                "validation_nontrivial_variable_length": validation["nontrivial_variable_length"],
                 **{name: validation[name] for name in ("performance_score", "mean_regret", "exact_optimal_rate")},
             }
             history.append(values)

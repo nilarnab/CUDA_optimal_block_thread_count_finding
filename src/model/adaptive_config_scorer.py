@@ -17,6 +17,15 @@ class AdaptiveKernelSequence(KernelSequence):
     gates: torch.Tensor
     expected_lengths: torch.Tensor
 
+    def final_state_only(self) -> AdaptiveKernelSequence:
+        """Counterfactual cache: retain the same full-input final state alone."""
+        rows = torch.arange(self.states.size(0), device=self.device)
+        states = self.states[rows, self.lengths - 1].unsqueeze(1)
+        lengths = torch.ones_like(self.lengths)
+        return AdaptiveKernelSequence(
+            states, lengths, self.gates.new_ones((len(rows), 1)), lengths.float()
+        )
+
     def __getitem__(self, selection: slice) -> AdaptiveKernelSequence:
         lengths = self.lengths[selection]
         width = int(lengths.max())

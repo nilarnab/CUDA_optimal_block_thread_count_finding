@@ -48,6 +48,8 @@ def parse_args():
     parser.add_argument("--token-ids", required=True)
     parser.add_argument("--embedding-matrix", required=True)
     parser.add_argument("--checkpoint")
+    parser.add_argument("--save-best", action="store_true",
+                        help="also save .best.pt by validation regret, then task loss")
     parser.add_argument("--architecture", choices=("adaptive", "baseline", "sequence"), default="adaptive")
     parser.add_argument("--lstm-hidden-size", type=int, default=128,
                         help="features per LSTM timestep; independent of retained sequence length")
@@ -57,6 +59,8 @@ def parse_args():
     parser.add_argument("--loss", choices=("bce", "mse", "regret"), default="bce")
     parser.add_argument("--target-exponent", type=float, default=12.0)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--split-seed", type=int,
+                        help="hold the data split fixed while changing the model seed")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--validation-kernels", type=int, default=2)
     parser.add_argument("--problem-columns", nargs="+", default=["problem_size"])
@@ -89,6 +93,7 @@ def main():
         case_summary, length_summary, prediction_cases, representation_rows, timing_environment, write_rows,
     )
     from training.adaptive_trainer import AdaptiveTrainer
+    from training.retention_evaluation import persistent_length_evidence, retention_diagnostics
     from training.supervised_trainer import TrainerConfig
     from training.tracking import wandb_epoch_metrics
 
@@ -97,8 +102,9 @@ def main():
     groups = json.loads(Path(args.split_groups).read_text(encoding="utf-8")) if args.split_groups else None
     if args.split_groups and not isinstance(groups, dict):
         raise ValueError("split groups must be a JSON kernel-to-group mapping")
+    split_seed = args.seed if args.split_seed is None else args.split_seed
     catalog, split, training, validation = load_datasets(
-        args.runtimes, args.token_ids, matrix, args.target_exponent, seed=args.seed,
+        args.runtimes, args.token_ids, matrix, args.target_exponent, seed=split_seed,
         validation_kernels=args.validation_kernels, problem_columns=args.problem_columns,
         split_groups=groups, validation_groups=args.validation_groups,
     )
@@ -119,7 +125,8 @@ def main():
         "action_catalog": [asdict(action) for action in catalog], "target_exponent": args.target_exponent,
         "input_fingerprints": input_fingerprints(args.runtimes, args.token_ids),
         "embedding_sha256": hashlib.sha256(Path(args.embedding_matrix).read_bytes()).hexdigest(),
-        "seed": args.seed, "batch_size": args.batch_size, "length_penalty": coefficient,
+        "seed": args.seed, "split_seed": split_seed,
+        "batch_size": args.batch_size, "length_penalty": coefficient,
         "dataset_device": source_device, "training_samples": len(training), "validation_samples": len(validation),
         "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
     }
@@ -137,17 +144,34 @@ def main():
             config={**vars(args), **metadata, "timing_environment": environment},
         )
 
+    best_path = checkpoint.with_suffix(".best.pt")
+    best_key, best_epoch = None, None
+    checkpoint_history = []
+
     def log_epoch(values):
+        nonlocal best_key, best_epoch
+        checkpoint_history.append(dict(values))
+        rank = (values["mean_regret"], values["validation_task_loss"])
+        if args.save_best and not all(math.isfinite(value) for value in rank):
+            raise FloatingPointError("non-finite checkpoint selection metric")
+        if args.save_best and (best_key is None or rank < best_key):
+            best_key, best_epoch = rank, values["epoch"]
+            trainer.save_checkpoint(
+                best_path, **metadata, history=checkpoint_history,
+                checkpoint_selection="validation_regret_then_task_loss", selected_epoch=best_epoch,
+            )
         if run:
             metrics = wandb_epoch_metrics(values)
             metrics.update({f"compression/{key}": value for key, value in values.items()
                             if "_h" in key or key.endswith("task_loss")})
+            metrics["retention/validation_nontrivial_variable_length"] = values["validation_nontrivial_variable_length"]
             run.log(metrics, step=values["epoch"])
 
     try:
         history = trainer.fit(train_loader, validation_loader, epoch_callback=log_epoch)
         # Save trained weights even if a later timing/reporting step fails.
-        trainer.save_checkpoint(checkpoint, **metadata, history=history)
+        trainer.save_checkpoint(checkpoint, **metadata, history=history,
+                                checkpoint_selection="final", selected_epoch=args.epochs)
         cases = prediction_cases(
             model, validation_loader, catalog, args.device, loss_kind=args.loss, length_penalty=coefficient,
             warmup=args.latency_warmup, repetitions=args.latency_repetitions, epoch=args.epochs,
@@ -156,6 +180,10 @@ def main():
                                             split="training", epoch=args.epochs)
         compression = length_summary([*train_lengths, *cases])
         summaries = case_summary(cases)
+        retention = retention_diagnostics(
+            model, validation_loader, catalog, args.device, loss_kind=args.loss, epoch=args.epochs
+        )
+        persistence = persistent_length_evidence(trainer.length_history)
         lengths_path = checkpoint.with_suffix(".lengths.csv")
         cases_path = checkpoint.with_suffix(".validation.csv")
         report_path = checkpoint.with_suffix(".metrics.json")
@@ -164,9 +192,20 @@ def main():
         report = {**metadata, "trainer_config": asdict(config), "history": history,
                   "timing_environment": environment, "timing_repetitions": args.latency_repetitions,
                   "timing_warmup": args.latency_warmup, "compression": compression,
-                  "validation": summaries, "cases": cases}
+                  "validation": summaries, "cases": cases, "retention": retention,
+                  "retention_persistence": persistence,
+                  "best_checkpoint": str(best_path) if args.save_best else None,
+                  "best_epoch": best_epoch}
         report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         if run:
+            run.summary.update({"best/epoch": best_epoch,
+                                "retention/persistent_nontrivial_variation": persistence["persistent_nontrivial_variation"]})
+            if retention:
+                run.summary.update({
+                    "retention/nontrivial_variable_length": retention["lengths"]["nontrivial_variable_length"],
+                    "retention/extra_state_task_gain": retention["extra_state_task_gain"],
+                    "retention/extra_state_regret_gain": retention["extra_state_regret_gain"],
+                })
             run.summary.update({**summaries, **{f"compression/{k}": compression[k]
                                for k in ("all_same_h", "mean_h", "min_h", "max_h")}})
             run.log({"validation/cases": wandb.Table(columns=list(cases[0]),
@@ -180,9 +219,12 @@ def main():
             run.finish()
     print(json.dumps({"checkpoint": str(checkpoint), "report": str(report_path),
                       "lstm_hidden_size": args.lstm_hidden_size,
+                      "best_checkpoint": str(best_path) if args.save_best else None,
+                      "best_epoch": best_epoch,
                       "lengths_csv": str(lengths_path), "cases_csv": str(cases_path),
                       "final_epoch": history[-1], "validation": summaries,
-                      "compression": compression, "timing_environment": environment}, indent=2))
+                      "compression": compression, "retention": retention,
+                      "retention_persistence": persistence, "timing_environment": environment}, indent=2))
 
 
 if __name__ == "__main__":

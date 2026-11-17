@@ -14,6 +14,7 @@ from train_adaptive import build_model, input_fingerprints, load_datasets, make_
 def evaluate_checkpoint(path, args):
     import torch
     from training.adaptive_evaluation import case_summary, length_summary, prediction_cases, timing_environment
+    from training.retention_evaluation import retention_diagnostics
 
     saved = torch.load(path, map_location="cpu", weights_only=True)
     metadata = saved["metadata"]
@@ -42,13 +43,20 @@ def evaluate_checkpoint(path, args):
         warmup=args.latency_warmup, repetitions=args.latency_repetitions,
         epoch=metadata.get("history", [{"epoch": 0}])[-1]["epoch"],
     )
+    retention = retention_diagnostics(
+        model, make_loader(validation, args.batch_size), catalog, args.device,
+        loss_kind=saved["trainer_config"]["loss"], epoch=metadata["history"][-1]["epoch"],
+    )
     return {
         "checkpoint": str(path), "architecture": metadata["architecture"],
         "lstm_hidden_size": metadata.get("lstm_hidden_size", 128),
+        "epoch": metadata["history"][-1]["epoch"],
+        "checkpoint_selection": metadata.get("checkpoint_selection", "final"),
         "loss_kind": saved["trainer_config"]["loss"], "length_penalty": metadata.get("length_penalty", 0.0),
         "validation_kernels": list(split["validation"]), "problem_columns": metadata["problem_columns"],
         "timing_environment": timing_environment(args.device, metadata.get("dataset_device")),
         "summary": case_summary(cases), "compression": length_summary(cases), "cases": cases,
+        "retention": retention,
     }, metadata
 
 
