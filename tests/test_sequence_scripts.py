@@ -45,17 +45,20 @@ class SequenceScriptsTest(unittest.TestCase):
                 return result
 
             inputs = ["--runtimes", runtime_path, "--token-ids", token_path]
-            for architecture, loss in (("baseline", "bce"), ("sequence", "bce"), ("sequence", "regret")):
+            for architecture, loss, width in (("baseline", "bce", 8), ("sequence", "bce", 4), ("sequence", "regret", 2)):
                 checkpoint = root / f"{architecture}-{loss}.pt"
                 trained = command(
                     "train_sequence.py", *inputs, "--embedding-matrix", matrix_path,
                     "--checkpoint", checkpoint, "--architecture", architecture,
+                    "--lstm-hidden-size", width,
                     "--loss", loss, "--epochs", 2, "--batch-size", 3,
                     "--validation-kernels", 1, "--latency-warmup", 0, "--latency-repetitions", 1,
                 )
                 evaluated = command(
                     "evaluate_sequence.py", *inputs, "--checkpoint", checkpoint, "--batch-size", 1
                 )["model"]
+                self.assertEqual(trained["lstm_hidden_size"], width)
+                self.assertEqual(evaluated["lstm_hidden_size"], width)
                 for name in ("performance_score", "mean_regret", "exact_optimal_rate", "validation_loss"):
                     self.assertAlmostEqual(trained["final_epoch"][name], evaluated[name], places=6)
                 self.assertEqual(len(evaluated["selections"]), 2)

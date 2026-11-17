@@ -20,7 +20,8 @@ def input_fingerprints(runtimes, token_ids) -> dict[str, str]:
     }
 
 
-def build_model(matrix, context_size: int, action_count: int, architecture: str):
+def build_model(matrix, context_size: int, action_count: int, architecture: str,
+                lstm_hidden_size: int = 128):
     from encoders.context_encoder import ContextEncoder
     from encoders.fasttext_encoder import FrozenFastTextEncoder
     from encoders.lstm_encoder import LSTMEncoder
@@ -28,11 +29,13 @@ def build_model(matrix, context_size: int, action_count: int, architecture: str)
     from model.sequence_config_scorer import SequenceConfigurationModel
 
     if architecture == "sequence":
-        return SequenceConfigurationModel(matrix, context_size, action_count)
+        return SequenceConfigurationModel(
+            matrix, context_size, action_count, hidden_size=lstm_hidden_size
+        )
     if architecture != "baseline":
         raise ValueError(f"unknown architecture: {architecture}")
     tokens = FrozenFastTextEncoder(matrix)
-    kernel = LSTMEncoder(tokens.output_size, 128, attention=True)
+    kernel = LSTMEncoder(tokens.output_size, lstm_hidden_size, attention=True)
     context = ContextEncoder(context_size, 32)
     return ConfigurationModel(
         tokens, kernel, context,
@@ -139,6 +142,8 @@ def parse_args():
     parser.add_argument("--embedding-matrix", required=True)
     parser.add_argument("--checkpoint", help="default: checkpoints/<architecture>.pt")
     parser.add_argument("--architecture", choices=("sequence", "baseline"), default="sequence")
+    parser.add_argument("--lstm-hidden-size", type=int, default=128,
+                        help="features per LSTM timestep; independent of retained sequence length")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--loss", choices=("bce", "mse", "regret"), default="bce")
@@ -160,6 +165,8 @@ def parse_args():
     args = parser.parse_args()
     if args.epochs < 1 or args.batch_size < 1:
         parser.error("epochs and batch size must be positive")
+    if args.lstm_hidden_size < 1:
+        parser.error("LSTM hidden size must be positive")
     if args.latency_warmup < 0 or args.latency_repetitions < 1:
         parser.error("latency warmup must be nonnegative and repetitions positive")
     return args
@@ -187,7 +194,8 @@ def main():
         validation_groups=args.validation_groups,
     )
     context_size = len(train_data[0].problem_size)
-    model = build_model(matrix, context_size, len(catalog), args.architecture)
+    model = build_model(matrix, context_size, len(catalog), args.architecture,
+                        lstm_hidden_size=args.lstm_hidden_size)
     config = TrainerConfig(
         epochs=args.epochs, loss=args.loss, device=args.device, verbose=args.verbose
     )
@@ -196,6 +204,7 @@ def main():
     metadata = {
         "format_version": 1,
         "architecture": args.architecture,
+        "lstm_hidden_size": args.lstm_hidden_size,
         "context_size": context_size,
         "problem_columns": args.problem_columns,
         "split_groups": split_groups,
@@ -214,7 +223,8 @@ def main():
         "validation_samples": len(validation_data),
     }
     if args.verbose:
-        print(f"[training:model] {args.architecture}; {metadata['trainable_parameters']} parameters")
+        print(f"[training:model] {args.architecture}; hidden_size={args.lstm_hidden_size}; "
+              f"{metadata['trainable_parameters']} parameters")
         print(f"[training:split] {metadata['split']}")
         print(f"[training:data] train={len(train_data)} validation={len(validation_data)}")
     train_loader = make_loader(train_data, args.batch_size, shuffle=True, seed=args.seed)
@@ -224,7 +234,7 @@ def main():
         import wandb
         run = wandb.init(
             project=args.wandb_project, entity=args.wandb_entity, mode=args.wandb_mode,
-            name=args.wandb_run_name or f"{args.architecture}-{args.loss}-seed{args.seed}",
+            name=args.wandb_run_name or f"{args.architecture}-h{args.lstm_hidden_size}-{args.loss}-seed{args.seed}",
             config={**vars(args), **metadata, "trainer_config": asdict(config)},
         )
     try:
@@ -250,6 +260,7 @@ def main():
         if run:
             run.finish()
     print(json.dumps({"checkpoint": str(checkpoint), "report": str(report_path),
+                      "lstm_hidden_size": args.lstm_hidden_size,
                       "split": metadata["split"], "final_epoch": history[-1],
                       "runtime_predictor_latency": latency_metrics}, indent=2))
 

@@ -48,13 +48,15 @@ class AdaptiveScriptsTest(unittest.TestCase):
                       "--seed", 1, "--epochs", 2, "--batch-size", 2,
                       "--latency-warmup", 0, "--latency-repetitions", 1]
             trained = {}
-            for architecture in ("baseline", "adaptive"):
+            for architecture, width in (("baseline", 8), ("adaptive", 2), ("sequence", 4)):
                 trained[architecture] = command(
                     "train_adaptive.py", *common, "--architecture", architecture,
                     "--checkpoint", root / f"{architecture}.pt", "--dataset-run-dir", run,
                     "--length-penalty", 0.01,
+                    "--lstm-hidden-size", width,
                 )
                 result = trained[architecture]
+                self.assertEqual(result["lstm_hidden_size"], width)
                 self.assertEqual(result["timing_environment"]["same_gpu_model"], False)
                 self.assertEqual(result["compression"]["kernel_count"], 4)
                 self.assertGreater(result["validation"]["mean_dense_ms"], 0)
@@ -68,28 +70,47 @@ class AdaptiveScriptsTest(unittest.TestCase):
                                            float(row["dense_ms"]) + float(row["selected_kernel_ms"]))
                     self.assertLessEqual(int(row["learned_h"]), int(row["input_token_count"]))
                     self.assertGreaterEqual(int(row["learned_h"]), 1)
+                    self.assertEqual(int(row["hidden_width"]), width)
                 with Path(result["lengths_csv"]).open() as handle:
                     lengths = list(csv.DictReader(handle))
                 self.assertEqual({row["kernel_id"] for row in lengths}, set(groups))
                 self.assertTrue({"m", "n", "k", "learned_h", "expected_h"}.issubset(lengths[0]))
+                self.assertEqual({int(row["hidden_width"]) for row in lengths}, {width})
             evaluated = command(
                 "evaluate_adaptive.py", *inputs, "--checkpoint", root / "adaptive.pt",
                 "--compare", root / "baseline.pt", "--output", root / "comparison.json",
                 "--latency-warmup", 0, "--latency-repetitions", 1,
             )
             self.assertGreater(evaluated["speedup_comparison_over_model"]["estimated_total_ms"], 0)
+            self.assertEqual(evaluated["model"]["lstm_hidden_size"], 2)
+            self.assertEqual(evaluated["comparison"]["lstm_hidden_size"], 8)
             self.assertAlmostEqual(evaluated["model"]["summary"]["validation_task_loss"],
                                    trained["adaptive"]["validation"]["validation_task_loss"], places=6)
             final = json.loads(Path(trained["adaptive"]["report"]).read_text())
             self.assertEqual([(r["kernel_id"], r["learned_h"], r["selected_action"]) for r in final["cases"]],
                              [(r["kernel_id"], r["learned_h"], r["selected_action"]) for r in evaluated["model"]["cases"]])
+            narrow_sequence = command(
+                "evaluate_adaptive.py", *inputs, "--checkpoint", root / "sequence.pt",
+                "--output", root / "sequence-evaluation.json",
+                "--latency-warmup", 0, "--latency-repetitions", 1,
+            )
+            self.assertEqual(narrow_sequence["model"]["lstm_hidden_size"], 4)
             # Existing sequence-runner baseline checkpoints remain usable for comparison.
             command("train_sequence.py", *common, "--architecture", "baseline", "--checkpoint", root / "old.pt")
+            old_checkpoint = torch.load(root / "old.pt", weights_only=True)
+            self.assertEqual(old_checkpoint["metadata"].pop("lstm_hidden_size"), 128)
+            torch.save(old_checkpoint, root / "old.pt")
+            restored = command("evaluate_sequence.py", *inputs, "--checkpoint", root / "old.pt")
+            self.assertEqual(restored["model"]["lstm_hidden_size"], 128)
             command("evaluate_adaptive.py", *inputs, "--checkpoint", root / "adaptive.pt",
                     "--compare", root / "old.pt", "--output", root / "old-comparison.json",
                     "--latency-warmup", 0, "--latency-repetitions", 1)
             error = command("train_adaptive.py", *common, "--length-penalty", "nan", succeeds=False)
             self.assertIn("length penalty must be finite", error)
+            for script in ("train_sequence.py", "train_adaptive.py"):
+                for value in (0, -1):
+                    error = command(script, *common, "--lstm-hidden-size", value, succeeds=False)
+                    self.assertIn("LSTM hidden size must be positive", error)
             token_path.write_text(token_path.read_text() + "\n")
             error = command("evaluate_adaptive.py", *inputs, "--checkpoint", root / "adaptive.pt",
                             "--output", root / "bad.json", succeeds=False)

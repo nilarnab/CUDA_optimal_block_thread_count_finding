@@ -14,11 +14,14 @@ from train_sequence import build_model as build_existing_model
 from train_sequence import input_fingerprints, load_datasets, make_loader
 
 
-def build_model(matrix, context_size, action_count, architecture):
+def build_model(matrix, context_size, action_count, architecture, lstm_hidden_size=128):
     if architecture == "adaptive":
         from model.adaptive_config_scorer import AdaptiveConfigurationModel
-        return AdaptiveConfigurationModel(matrix, context_size, action_count)
-    return build_existing_model(matrix, context_size, action_count, architecture)
+        return AdaptiveConfigurationModel(
+            matrix, context_size, action_count, hidden_size=lstm_hidden_size
+        )
+    return build_existing_model(matrix, context_size, action_count, architecture,
+                                lstm_hidden_size=lstm_hidden_size)
 
 
 def dataset_device(run_dir, runtimes_path):
@@ -46,6 +49,8 @@ def parse_args():
     parser.add_argument("--embedding-matrix", required=True)
     parser.add_argument("--checkpoint")
     parser.add_argument("--architecture", choices=("adaptive", "baseline", "sequence"), default="adaptive")
+    parser.add_argument("--lstm-hidden-size", type=int, default=128,
+                        help="features per LSTM timestep; independent of retained sequence length")
     parser.add_argument("--length-penalty", type=float, default=1e-4)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=256)
@@ -68,6 +73,8 @@ def parse_args():
     args = parser.parse_args()
     if args.epochs < 1 or args.batch_size < 1:
         parser.error("epochs and batch size must be positive")
+    if args.lstm_hidden_size < 1:
+        parser.error("LSTM hidden size must be positive")
     if not math.isfinite(args.length_penalty) or args.length_penalty < 0:
         parser.error("length penalty must be finite and nonnegative")
     if args.latency_warmup < 0 or args.latency_repetitions < 1:
@@ -96,7 +103,8 @@ def main():
         split_groups=groups, validation_groups=args.validation_groups,
     )
     source_device = dataset_device(args.dataset_run_dir, args.runtimes)
-    model = build_model(matrix, len(training[0].problem_size), len(catalog), args.architecture)
+    model = build_model(matrix, len(training[0].problem_size), len(catalog), args.architecture,
+                        lstm_hidden_size=args.lstm_hidden_size)
     coefficient = args.length_penalty if args.architecture == "adaptive" else 0.0
     config = TrainerConfig(epochs=args.epochs, loss=args.loss, device=args.device, verbose=args.verbose)
     trainer = AdaptiveTrainer(model, config, length_penalty=coefficient)
@@ -105,6 +113,7 @@ def main():
     checkpoint = Path(args.checkpoint or f"checkpoints/{args.architecture}.pt")
     metadata = {
         "format_version": 1, "adaptive_experiment_version": 1, "architecture": args.architecture,
+        "lstm_hidden_size": args.lstm_hidden_size,
         "context_size": len(training[0].problem_size), "problem_columns": args.problem_columns,
         "split_groups": groups, "split": {name: list(ids) for name, ids in split.items()},
         "action_catalog": [asdict(action) for action in catalog], "target_exponent": args.target_exponent,
@@ -116,7 +125,7 @@ def main():
     }
     environment = timing_environment(args.device, source_device)
     if args.verbose:
-        print(f"[adaptive:model] {args.architecture} lambda={coefficient:g}")
+        print(f"[adaptive:model] {args.architecture} hidden_size={args.lstm_hidden_size} lambda={coefficient:g}")
         print(f"[adaptive:split] {metadata['split']}")
         print(f"[adaptive:timing] {environment}")
     run = None
@@ -124,7 +133,7 @@ def main():
         import wandb
         run = wandb.init(
             project=args.wandb_project, entity=args.wandb_entity, mode=args.wandb_mode,
-            name=args.wandb_run_name or f"{args.architecture}-{args.loss}-lambda{coefficient:g}-seed{args.seed}",
+            name=args.wandb_run_name or f"{args.architecture}-h{args.lstm_hidden_size}-{args.loss}-lambda{coefficient:g}-seed{args.seed}",
             config={**vars(args), **metadata, "timing_environment": environment},
         )
 
@@ -170,6 +179,7 @@ def main():
         if run:
             run.finish()
     print(json.dumps({"checkpoint": str(checkpoint), "report": str(report_path),
+                      "lstm_hidden_size": args.lstm_hidden_size,
                       "lengths_csv": str(lengths_path), "cases_csv": str(cases_path),
                       "final_epoch": history[-1], "validation": summaries,
                       "compression": compression, "timing_environment": environment}, indent=2))

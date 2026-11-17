@@ -32,7 +32,8 @@ def evaluate_checkpoint(path, args):
     )
     if metadata["action_catalog"] != [asdict(action) for action in catalog]:
         raise ValueError("checkpoint action catalog differs")
-    model = build_model(matrix, metadata["context_size"], len(catalog), metadata["architecture"])
+    model = build_model(matrix, metadata["context_size"], len(catalog), metadata["architecture"],
+                        lstm_hidden_size=metadata.get("lstm_hidden_size", 128))
     model.load_state_dict(saved["model_state"])
     model.to(args.device).eval()
     cases = prediction_cases(
@@ -43,6 +44,7 @@ def evaluate_checkpoint(path, args):
     )
     return {
         "checkpoint": str(path), "architecture": metadata["architecture"],
+        "lstm_hidden_size": metadata.get("lstm_hidden_size", 128),
         "loss_kind": saved["trainer_config"]["loss"], "length_penalty": metadata.get("length_penalty", 0.0),
         "validation_kernels": list(split["validation"]), "problem_columns": metadata["problem_columns"],
         "timing_environment": timing_environment(args.device, metadata.get("dataset_device")),

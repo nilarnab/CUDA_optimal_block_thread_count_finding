@@ -32,7 +32,8 @@ def evaluate_checkpoint(path, args):
     )
     if metadata["action_catalog"] != [asdict(action) for action in catalog]:
         raise ValueError("action catalog differs from the checkpoint")
-    model = build_model(matrix, metadata["context_size"], len(catalog), metadata["architecture"])
+    model = build_model(matrix, metadata["context_size"], len(catalog), metadata["architecture"],
+                        lstm_hidden_size=metadata.get("lstm_hidden_size", 128))
     model.load_state_dict(saved["model_state"])
     config = TrainerConfig(**{**saved["trainer_config"], "device": args.device})
     trainer = SequenceTrainer(model, config)
@@ -62,6 +63,7 @@ def evaluate_checkpoint(path, args):
                 })
     return {
         "checkpoint": str(path), "architecture": metadata["architecture"],
+        "lstm_hidden_size": metadata.get("lstm_hidden_size", 128),
         "loss_kind": config.loss, "target_exponent": metadata["target_exponent"],
         "validation_loss": loss, **asdict(metrics),
         "validation_kernels": list(split["validation"]),
