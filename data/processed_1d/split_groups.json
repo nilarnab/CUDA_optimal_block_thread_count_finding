@@ -1,0 +1,14 @@
+{
+  "accumulate": "lscat_repo_10194",
+  "binarize_input": "lscat_repo_10194",
+  "binarize_weights": "lscat_repo_10194",
+  "matrix_transpose": "lscat_repo_10194",
+  "mean": "lscat_repo_10194",
+  "nbody": "nvidia_nbody_adapted",
+  "periodic_tile": "lscat_repo_10073",
+  "repeat_vector": "lscat_repo_1018",
+  "segmented_sum": "lscat_repo_10040",
+  "softmax": "lscat_repo_10194",
+  "variance": "lscat_repo_10194",
+  "vector_add": "lscat_repo_10047"
+}
