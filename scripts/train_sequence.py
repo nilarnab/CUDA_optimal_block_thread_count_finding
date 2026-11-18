@@ -13,10 +13,13 @@ import math
 from pathlib import Path
 
 
-def input_fingerprints(runtimes, token_ids) -> dict[str, str]:
+def input_fingerprints(runtimes, token_ids=None) -> dict[str, str]:
+    paths = [("runtimes", runtimes)]
+    if token_ids is not None:
+        paths.append(("token_ids", token_ids))
     return {
         name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
-        for name, path in (("runtimes", runtimes), ("token_ids", token_ids))
+        for name, path in paths
     }
 
 
@@ -25,11 +28,25 @@ def build_model(matrix, context_size: int, action_count: int, architecture: str,
     from encoders.context_encoder import ContextEncoder
     from encoders.fasttext_encoder import FrozenFastTextEncoder
     from encoders.lstm_encoder import LSTMEncoder
-    from model.config_scorer import ConfigurationModel, ConfigurationScorer
-    from model.sequence_config_scorer import SequenceConfigurationModel
+    from model.config_scorer import (
+        ConfigurationModel,
+        ConfigurationScorer,
+        ContextOnlyConfigurationModel,
+    )
+    from model.sequence_config_scorer import (
+        FinalStateConfigurationModel,
+        SequenceConfigurationModel,
+    )
 
-    if architecture == "sequence":
-        return SequenceConfigurationModel(
+    if architecture == "context":
+        return ContextOnlyConfigurationModel(matrix, context_size, action_count)
+    if architecture in {"sequence", "final"}:
+        model_class = (
+            SequenceConfigurationModel
+            if architecture == "sequence"
+            else FinalStateConfigurationModel
+        )
+        return model_class(
             matrix, context_size, action_count, hidden_size=lstm_hidden_size
         )
     if architecture != "baseline":
@@ -72,13 +89,16 @@ def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, see
             if recorded_groups != split_groups:
                 raise ValueError("CSV source groups require the matching --split-groups JSON")
     table = RuntimeTable.from_csv(runtime_path, problem_columns=problem_columns)
-    tokens = json.loads(Path(token_path).read_text(encoding="utf-8"))
-    if not isinstance(tokens, dict):
-        raise ValueError("token IDs must be a JSON mapping from kernel IDs to lists")
     contexts = table.contexts()
     if not contexts:
         raise ValueError("runtime table is empty")
     kernel_ids = {key.kernel_id for key in contexts}
+    if token_path is None:
+        tokens = {kernel_id: [1] for kernel_id in kernel_ids}
+    else:
+        tokens = json.loads(Path(token_path).read_text(encoding="utf-8"))
+        if not isinstance(tokens, dict):
+            raise ValueError("token IDs must be a JSON mapping from kernel IDs to lists")
     for kernel_id in sorted(kernel_ids):
         sequence = tokens.get(kernel_id)
         if not isinstance(sequence, list) or not sequence or any(
@@ -138,10 +158,13 @@ def make_loader(dataset, batch_size, *, shuffle=False, seed=0):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtimes", required=True)
-    parser.add_argument("--token-ids", required=True)
-    parser.add_argument("--embedding-matrix", required=True)
+    parser.add_argument("--token-ids")
+    parser.add_argument("--embedding-matrix")
     parser.add_argument("--checkpoint", help="default: checkpoints/<architecture>.pt")
-    parser.add_argument("--architecture", choices=("sequence", "baseline"), default="sequence")
+    parser.add_argument(
+        "--architecture", choices=("sequence", "final", "context", "baseline"),
+        default="sequence"
+    )
     parser.add_argument("--lstm-hidden-size", type=int, default=128,
                         help="features per LSTM timestep; independent of retained sequence length")
     parser.add_argument("--epochs", type=int, default=20)
@@ -169,6 +192,8 @@ def parse_args():
         parser.error("LSTM hidden size must be positive")
     if args.latency_warmup < 0 or args.latency_repetitions < 1:
         parser.error("latency warmup must be nonnegative and repetitions positive")
+    if args.architecture != "context" and (not args.token_ids or not args.embedding_matrix):
+        parser.error("--token-ids and --embedding-matrix are required except for context-only")
     return args
 
 
@@ -180,7 +205,11 @@ def main():
     from training.tracking import WandbEpochLogger, wandb_inference_metrics
 
     torch.manual_seed(args.seed)
-    matrix = torch.load(args.embedding_matrix, map_location="cpu", weights_only=True)
+    matrix = (
+        torch.zeros((2, 1), dtype=torch.float32)
+        if args.architecture == "context" and not args.embedding_matrix
+        else torch.load(args.embedding_matrix, map_location="cpu", weights_only=True)
+    )
     split_groups = (
         json.loads(Path(args.split_groups).read_text(encoding="utf-8"))
         if args.split_groups else None
@@ -216,7 +245,10 @@ def main():
         "latency_warmup": args.latency_warmup,
         "latency_repetitions": args.latency_repetitions,
         "input_fingerprints": input_fingerprints(args.runtimes, args.token_ids),
-        "embedding_sha256": hashlib.sha256(Path(args.embedding_matrix).read_bytes()).hexdigest(),
+        "embedding_sha256": (
+            hashlib.sha256(Path(args.embedding_matrix).read_bytes()).hexdigest()
+            if args.embedding_matrix else None
+        ),
         "torch_version": str(torch.__version__),
         "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
         "training_samples": len(train_data),

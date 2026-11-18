@@ -48,7 +48,9 @@ class AdaptiveScriptsTest(unittest.TestCase):
                       "--seed", 1, "--epochs", 2, "--batch-size", 2,
                       "--latency-warmup", 0, "--latency-repetitions", 1]
             trained = {}
-            for architecture, width in (("baseline", 8), ("adaptive", 2), ("sequence", 4)):
+            for architecture, width in (
+                ("baseline", 8), ("adaptive", 2), ("sequence", 4), ("context", 1)
+            ):
                 trained[architecture] = command(
                     "train_adaptive.py", *common, "--architecture", architecture,
                     "--checkpoint", root / f"{architecture}.pt", "--dataset-run-dir", run,
@@ -69,13 +71,23 @@ class AdaptiveScriptsTest(unittest.TestCase):
                     self.assertAlmostEqual(float(row["dense_plus_kernel_ms"]),
                                            float(row["dense_ms"]) + float(row["selected_kernel_ms"]))
                     self.assertLessEqual(int(row["learned_h"]), int(row["input_token_count"]))
-                    self.assertGreaterEqual(int(row["learned_h"]), 1)
-                    self.assertEqual(int(row["hidden_width"]), width)
+                    minimum_h = 0 if architecture == "context" else 1
+                    self.assertGreaterEqual(int(row["learned_h"]), minimum_h)
+                    expected_width = 0 if architecture == "context" else width
+                    self.assertEqual(int(row["hidden_width"]), expected_width)
                 with Path(result["lengths_csv"]).open() as handle:
                     lengths = list(csv.DictReader(handle))
                 self.assertEqual({row["kernel_id"] for row in lengths}, set(groups))
                 self.assertTrue({"m", "n", "k", "learned_h", "expected_h"}.issubset(lengths[0]))
-                self.assertEqual({int(row["hidden_width"]) for row in lengths}, {width})
+                self.assertEqual({int(row["hidden_width"]) for row in lengths}, {expected_width})
+            context_without_frontend = command(
+                "train_adaptive.py", "--runtimes", processed / "runtimes.csv",
+                "--architecture", "context", "--problem-columns", "m", "n", "k",
+                "--split-groups", processed / "split_groups.json", "--validation-groups", 1,
+                "--epochs", 1, "--batch-size", 2, "--latency-warmup", 0,
+                "--latency-repetitions", 1, "--checkpoint", root / "context-no-frontend.pt",
+            )
+            self.assertEqual(context_without_frontend["compression"]["mean_h"], 0)
             evaluated = command(
                 "evaluate_adaptive.py", *inputs, "--checkpoint", root / "adaptive.pt",
                 "--compare", root / "baseline.pt", "--output", root / "comparison.json",

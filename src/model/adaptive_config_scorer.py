@@ -48,7 +48,9 @@ class AdaptiveConfigurationModel(SequenceConfigurationModel):
         self.gate_network = nn.Sequential(
             nn.Linear(2 * hidden, 32), nn.Tanh(), nn.Linear(32, 1)
         )
-        nn.init.zeros_(self.gate_network[-1].weight)
+        # Start gates near the same prior while allowing content-dependent
+        # differences and gradients from the first optimization step.
+        nn.init.normal_(self.gate_network[-1].weight, mean=0.0, std=0.01)
         nn.init.constant_(self.gate_network[-1].bias, -2.0)
 
     def _gate_values(self, log_alpha: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

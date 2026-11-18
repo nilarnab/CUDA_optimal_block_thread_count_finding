@@ -18,7 +18,9 @@ def evaluate_checkpoint(path, args):
 
     saved = torch.load(path, map_location="cpu", weights_only=True)
     metadata = saved["metadata"]
-    if metadata.get("format_version") != 1 or metadata.get("architecture") not in {"adaptive", "baseline", "sequence"}:
+    if metadata.get("format_version") != 1 or metadata.get("architecture") not in {
+        "adaptive", "final", "context", "baseline", "sequence"
+    }:
         raise ValueError("use a train_adaptive.py or train_sequence.py checkpoint")
     metadata.setdefault("problem_columns", ["problem_size"])
     metadata.setdefault("split_groups", None)

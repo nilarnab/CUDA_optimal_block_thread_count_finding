@@ -18,7 +18,12 @@ def length_evidence(rows):
     for row in rows:
         kernel = row["kernel_id"]
         item = {name: int(row[name]) for name in ("learned_h", "input_token_count", "hidden_width")}
-        if not 1 <= item["learned_h"] <= item["input_token_count"] or item["hidden_width"] < 1:
+        context_only = item["learned_h"] == 0 and item["hidden_width"] == 0
+        retained_representation = (
+            1 <= item["learned_h"] <= item["input_token_count"]
+            and item["hidden_width"] >= 1
+        )
+        if not (context_only or retained_representation):
             raise ValueError("invalid retained length or hidden width")
         if kernel in kernels and kernels[kernel] != item:
             raise ValueError(f"kernel-only representation changed across contexts: {kernel}")

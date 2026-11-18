@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import statistics
 
 import torch
 
@@ -31,7 +32,16 @@ class AdaptiveTrainer(SequenceTrainer):
                     self.optimizer.zero_grad(set_to_none=True)
                 cached = self.model.encode_kernel(batch["tokens"], batch["lengths"])
                 logits = self.model.score_cached(cached, batch["context"])
-                actual = getattr(cached, "lengths", torch.ones_like(batch["lengths"]))
+                context_only = (
+                    isinstance(cached, torch.Tensor)
+                    and cached.ndim == 2
+                    and cached.size(-1) == 0
+                )
+                actual = getattr(
+                    cached, "lengths",
+                    torch.zeros_like(batch["lengths"])
+                    if context_only else torch.ones_like(batch["lengths"]),
+                )
                 expected = getattr(cached, "expected_lengths", actual.float())
                 task_loss = self.loss(logits, batch["targets"])
                 loss = task_loss + self.length_penalty * expected.mean()
@@ -64,9 +74,17 @@ class AdaptiveTrainer(SequenceTrainer):
                   "expected_h": total_expected / count}
         if not training:
             result.update(runtime_metrics(torch.cat(logits_all), torch.cat(runtimes_all)).__dict__)
-            result["h_mean"] = sum(row["learned_h"] for row in rows) / len(rows)
-            result["h_min"] = min(row["learned_h"] for row in rows)
-            result["h_max"] = max(row["learned_h"] for row in rows)
+            retained_lengths = [row["learned_h"] for row in rows]
+            result["h_mean"] = statistics.fmean(retained_lengths)
+            result["h_std"] = statistics.pstdev(retained_lengths)
+            result["h_min"] = min(retained_lengths)
+            result["h_max"] = max(retained_lengths)
+            optional_gate_count = sum(row["input_token_count"] - 1 for row in rows)
+            open_optional_gates = sum(max(0, row["learned_h"] - 1) for row in rows)
+            result["gate_open_fraction"] = (
+                open_optional_gates / optional_gate_count
+                if optional_gate_count else 0.0
+            )
             evidence = length_evidence(rows)
             result["distinct_h"] = evidence["distinct_h_count"]
             result["nontrivial_variable_length"] = evidence["nontrivial_variable_length"]
@@ -83,13 +101,22 @@ class AdaptiveTrainer(SequenceTrainer):
         for epoch in range(1, self.config.epochs + 1):
             train, _ = self._epoch(train_batches, training=True, epoch=epoch)
             validation, rows = self._epoch(validation_batches, training=False, epoch=epoch)
+            lengths_by_kernel = {}
+            for row in rows:
+                lengths_by_kernel.setdefault(row["kernel_id"], []).append(row["learned_h"])
+            validation_h_by_kernel = {
+                kernel: statistics.fmean(lengths)
+                for kernel, lengths in sorted(lengths_by_kernel.items())
+            }
             values = {
                 "epoch": epoch, "training_loss": train["loss"],
                 "training_task_loss": train["task_loss"], "training_expected_h": train["expected_h"],
                 "validation_loss": validation["loss"], "validation_task_loss": validation["task_loss"],
                 "validation_expected_h": validation["expected_h"],
-                "validation_h_mean": validation["h_mean"], "validation_h_min": validation["h_min"],
+                "validation_h_mean": validation["h_mean"], "validation_h_std": validation["h_std"],
+                "validation_h_min": validation["h_min"],
                 "validation_h_max": validation["h_max"],
+                "validation_gate_open_fraction": validation["gate_open_fraction"],
                 "validation_distinct_h": validation["distinct_h"],
                 "validation_nontrivial_variable_length": validation["nontrivial_variable_length"],
                 **{name: validation[name] for name in ("performance_score", "mean_regret", "exact_optimal_rate")},
@@ -97,10 +124,17 @@ class AdaptiveTrainer(SequenceTrainer):
             history.append(values)
             self.length_history.extend(rows)
             if self.config.verbose:
+                per_kernel = ", ".join(
+                    f"{kernel}={retained:.2f}"
+                    for kernel, retained in validation_h_by_kernel.items()
+                )
                 print(f"[adaptive:epoch] {epoch}/{self.config.epochs} "
                       f"task={train['task_loss']:.6f} expected_h={train['expected_h']:.2f} "
                       f"validation_task={validation['task_loss']:.6f} "
-                      f"h={validation['h_mean']:.2f} [{validation['h_min']},{validation['h_max']}] "
+                      f"h={validation['h_mean']:.2f}±{validation['h_std']:.2f} "
+                      f"[{validation['h_min']},{validation['h_max']}] "
+                      f"gates_open={validation['gate_open_fraction']:.2%} "
+                      f"val_open_gates=[{per_kernel}] "
                       f"performance={validation['performance_score']:.6f}")
             if epoch_callback:
                 epoch_callback(values)

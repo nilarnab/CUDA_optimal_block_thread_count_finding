@@ -18,6 +18,13 @@ class AdaptiveModelTest(unittest.TestCase):
         self.lengths = torch.tensor([4, 2])
         self.context = torch.tensor([[128.0], [1024.0]])
 
+    def test_gate_output_layer_starts_near_shared_prior_without_zero_weights(self):
+        torch = self.torch
+        output = self.model.gate_network[-1]
+        torch.testing.assert_close(output.bias, torch.full_like(output.bias, -2.0))
+        self.assertGreater(float(output.weight.detach().abs().sum()), 0)
+        self.assertLess(float(output.weight.detach().std()), 0.03)
+
     def test_compaction_final_state_padding_and_cached_scoring(self):
         torch = self.torch
         self.model.eval()
@@ -117,6 +124,10 @@ class AdaptiveModelTest(unittest.TestCase):
             trainer = AdaptiveTrainer(self.model, TrainerConfig(epochs=1, loss=kind), length_penalty=0.1)
             history = trainer.fit([batch], [batch])
             final = history[-1]
+            self.assertIn("validation_h_std", final)
+            self.assertGreaterEqual(final["validation_h_std"], 0)
+            self.assertGreaterEqual(final["validation_gate_open_fraction"], 0)
+            self.assertLessEqual(final["validation_gate_open_fraction"], 1)
             self.assertAlmostEqual(final["validation_loss"],
                                    final["validation_task_loss"] + .1 * final["validation_expected_h"], places=6)
             self.assertAlmostEqual(trainer.evaluate([batch])[0], final["validation_loss"], places=6)

@@ -38,7 +38,12 @@ def _cached_samples(model, batches, device):
 
 def _length_row(cached, batch, index, split, epoch):
     sequence = hasattr(cached, "lengths")
-    actual = int(cached.lengths[0]) if sequence else 1
+    context_only = (
+        isinstance(cached, torch.Tensor)
+        and cached.ndim == 2
+        and cached.size(-1) == 0
+    )
+    actual = int(cached.lengths[0]) if sequence else (0 if context_only else 1)
     expected = float(cached.expected_lengths[0]) if hasattr(cached, "expected_lengths") else float(actual)
     width = cached.states.size(-1) if sequence else cached.size(-1)
     return {

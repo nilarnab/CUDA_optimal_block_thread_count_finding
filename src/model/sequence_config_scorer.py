@@ -94,3 +94,15 @@ class SequenceConfigurationModel(nn.Module):
         self, tokens: torch.Tensor, lengths: torch.Tensor, context: torch.Tensor
     ) -> torch.Tensor:
         return self.score_cached(self.encode_kernel(tokens, lengths), context)
+
+
+class FinalStateConfigurationModel(SequenceConfigurationModel):
+    """Matched sequence scorer that always retains only the final LSTM state."""
+
+    def encode_kernel(
+        self, tokens: torch.Tensor, lengths: torch.Tensor
+    ) -> KernelSequence:
+        sequence = super().encode_kernel(tokens, lengths)
+        rows = torch.arange(sequence.states.size(0), device=sequence.states.device)
+        final_states = sequence.states[rows, sequence.lengths - 1].unsqueeze(1)
+        return KernelSequence(final_states, torch.ones_like(sequence.lengths))

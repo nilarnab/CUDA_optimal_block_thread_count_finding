@@ -45,12 +45,15 @@ def dataset_device(run_dir, runtimes_path):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtimes", required=True)
-    parser.add_argument("--token-ids", required=True)
-    parser.add_argument("--embedding-matrix", required=True)
+    parser.add_argument("--token-ids")
+    parser.add_argument("--embedding-matrix")
     parser.add_argument("--checkpoint")
     parser.add_argument("--save-best", action="store_true",
                         help="also save .best.pt by validation regret, then task loss")
-    parser.add_argument("--architecture", choices=("adaptive", "baseline", "sequence"), default="adaptive")
+    parser.add_argument(
+        "--architecture", choices=("adaptive", "final", "context", "baseline", "sequence"),
+        default="adaptive",
+    )
     parser.add_argument("--lstm-hidden-size", type=int, default=128,
                         help="features per LSTM timestep; independent of retained sequence length")
     parser.add_argument("--length-penalty", type=float, default=1e-4)
@@ -83,6 +86,8 @@ def parse_args():
         parser.error("length penalty must be finite and nonnegative")
     if args.latency_warmup < 0 or args.latency_repetitions < 1:
         parser.error("latency warmup must be nonnegative and repetitions positive")
+    if args.architecture != "context" and (not args.token_ids or not args.embedding_matrix):
+        parser.error("--token-ids and --embedding-matrix are required except for context-only")
     return args
 
 
@@ -98,7 +103,11 @@ def main():
     from training.tracking import wandb_epoch_metrics
 
     torch.manual_seed(args.seed)
-    matrix = torch.load(args.embedding_matrix, map_location="cpu", weights_only=True)
+    matrix = (
+        torch.zeros((2, 1), dtype=torch.float32)
+        if args.architecture == "context" and not args.embedding_matrix
+        else torch.load(args.embedding_matrix, map_location="cpu", weights_only=True)
+    )
     groups = json.loads(Path(args.split_groups).read_text(encoding="utf-8")) if args.split_groups else None
     if args.split_groups and not isinstance(groups, dict):
         raise ValueError("split groups must be a JSON kernel-to-group mapping")
@@ -124,7 +133,10 @@ def main():
         "split_groups": groups, "split": {name: list(ids) for name, ids in split.items()},
         "action_catalog": [asdict(action) for action in catalog], "target_exponent": args.target_exponent,
         "input_fingerprints": input_fingerprints(args.runtimes, args.token_ids),
-        "embedding_sha256": hashlib.sha256(Path(args.embedding_matrix).read_bytes()).hexdigest(),
+        "embedding_sha256": (
+            hashlib.sha256(Path(args.embedding_matrix).read_bytes()).hexdigest()
+            if args.embedding_matrix else None
+        ),
         "seed": args.seed, "split_seed": split_seed,
         "batch_size": args.batch_size, "length_penalty": coefficient,
         "dataset_device": source_device, "training_samples": len(training), "validation_samples": len(validation),
@@ -164,6 +176,9 @@ def main():
             metrics = wandb_epoch_metrics(values)
             metrics.update({f"compression/{key}": value for key, value in values.items()
                             if "_h" in key or key.endswith("task_loss")})
+            metrics["compression/validation_gate_open_fraction"] = values[
+                "validation_gate_open_fraction"
+            ]
             metrics["retention/validation_nontrivial_variable_length"] = values["validation_nontrivial_variable_length"]
             run.log(metrics, step=values["epoch"])
 

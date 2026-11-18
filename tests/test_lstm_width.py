@@ -22,7 +22,7 @@ class LSTMWidthTest(unittest.TestCase):
         lengths = torch.tensor([3, 2])
         context = torch.tensor([[32., 1., 1024.], [64., 1., 4096.]])
         for width in (2, 4, 8):
-            for architecture in ("baseline", "sequence", "adaptive"):
+            for architecture in ("baseline", "sequence", "final", "adaptive"):
                 with self.subTest(width=width, architecture=architecture):
                     model = build_model(matrix, 3, 16, architecture, lstm_hidden_size=width).eval()
                     lstm = getattr(model.kernel_encoder, "lstm", model.kernel_encoder)

@@ -10,8 +10,17 @@ from pathlib import Path
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument(
+        "--cuda-dir", help="directory searched recursively for .cu files"
+    )
+    inputs.add_argument(
+        "--source-manifest",
+        help="JSON mapping kernel IDs to CUDA paths, used to avoid compiling harness files",
+    )
     parser.add_argument(
-        "--cuda-dir", required=True, help="directory searched recursively for .cu files"
+        "--source-root",
+        help="root for paths in --source-manifest (default: manifest parent)",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--clang", default="clang++")
@@ -33,16 +42,35 @@ def main() -> None:
     from frontend.tokenizer import LLVMTokenizer, Vocabulary
 
     args = parse_args()
-    source_root = Path(args.cuda_dir).resolve()
+    source_root = Path(
+        args.source_root or args.cuda_dir or Path(args.source_manifest).parent
+    ).resolve()
     output_root = Path(args.output_dir)
     ir_root = output_root / "llvm_ir"
     output_root.mkdir(parents=True, exist_ok=True)
 
-    sources = sorted(source_root.rglob("*.cu"))
-    if not sources:
+    if args.source_manifest:
+        manifest = json.loads(Path(args.source_manifest).read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or not manifest:
+            raise SystemExit("source manifest must be a nonempty kernel-to-path mapping")
+        source_items = []
+        for kernel_id, relative in sorted(manifest.items()):
+            if not isinstance(kernel_id, str) or not kernel_id or not isinstance(relative, str):
+                raise SystemExit("source manifest keys and paths must be nonempty strings")
+            source = (source_root / relative).resolve()
+            if not source.is_relative_to(source_root) or not source.is_file():
+                raise SystemExit(f"invalid source manifest path for {kernel_id}: {relative}")
+            source_items.append((kernel_id, source))
+    else:
+        sources = sorted(source_root.rglob("*.cu"))
+        source_items = [
+            (source.relative_to(source_root).with_suffix("").as_posix(), source)
+            for source in sources
+        ]
+    if not source_items:
         raise SystemExit(f"no .cu files found under {source_root}")
     if args.verbose:
-        print(f"[frontend:discover] found {len(sources)} CUDA files under {source_root}")
+        print(f"[frontend:discover] found {len(source_items)} CUDA files under {source_root}")
         print(f"[frontend:config] GPU architecture: {args.gpu_arch}")
         print(f"[frontend:config] LLVM output directory: {ir_root}")
 
@@ -55,10 +83,8 @@ def main() -> None:
     tokenizer = LLVMTokenizer()
     documents: dict[str, list[str]] = {}
     failures: dict[str, str] = {}
-    for source in sources:
-        relative = source.relative_to(source_root)
-        kernel_id = relative.with_suffix("").as_posix()
-        ir_path = (ir_root / relative).with_suffix(".ll")
+    for kernel_id, source in source_items:
+        ir_path = ir_root / f"{kernel_id}.ll"
         try:
             if args.verbose:
                 print(f"[frontend:compile] {kernel_id}: {source}")

@@ -40,6 +40,41 @@ class SequenceModelTest(unittest.TestCase):
         self.assertEqual(tuple(cache[1:2].states.shape), (1, 2, 7))
         torch.testing.assert_close(together, self.model.score_cached(cache, self.context))
 
+    def test_final_state_model_always_returns_one_state(self):
+        from model.sequence_config_scorer import (
+            FinalStateConfigurationModel,
+            SequenceConfigurationModel,
+        )
+
+        model = FinalStateConfigurationModel(
+            self.model.token_encoder.embedding.weight.detach(), 1, 3,
+            hidden_size=7, context_features=4, hidden_sizes=(9,), dropout=0,
+        ).eval()
+        full = SequenceConfigurationModel.encode_kernel(model, self.tokens, self.lengths)
+        retained = model.encode_kernel(self.tokens, self.lengths)
+        rows = self.torch.arange(len(self.lengths))
+        self.assertEqual(retained.lengths.tolist(), [1, 1, 1])
+        self.assertEqual(tuple(retained.states.shape), (3, 1, 7))
+        self.torch.testing.assert_close(
+            retained.states[:, 0], full.states[rows, self.lengths - 1]
+        )
+
+    def test_context_only_model_ignores_kernel_tokens(self):
+        from model.config_scorer import ContextOnlyConfigurationModel
+
+        model = ContextOnlyConfigurationModel(
+            self.model.token_encoder.embedding.weight.detach(), 1, 3,
+            context_features=4, hidden_sizes=(9,), dropout=0,
+        ).eval()
+        cache = model.encode_kernel(self.tokens, self.lengths)
+        self.assertEqual(tuple(cache.shape), (3, 0))
+        logits = model(self.tokens, self.lengths, self.context)
+        changed_tokens = self.tokens.roll(1, dims=1)
+        self.torch.testing.assert_close(
+            logits, model(changed_tokens, self.lengths, self.context)
+        )
+        self.assertEqual(model.scorer.network[0].in_features, 4)
+
     def test_gradients_reach_all_valid_timesteps_and_lstm(self):
         torch = self.torch
         from training.losses import PerformanceTargetLoss
