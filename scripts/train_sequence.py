@@ -62,7 +62,7 @@ def build_model(matrix, context_size: int, action_count: int, architecture: str,
 
 def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, seed=0,
                   validation_kernels=2, problem_columns=("problem_size",),
-                  split_groups=None, validation_groups=2):
+                  split_groups=None, validation_groups=2, training_groups=None):
     import torch
 
     from data.dataset import KernelRuntimeDataset
@@ -117,18 +117,23 @@ def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, see
             ))
         else:
             split = asdict(split_grouped_kernel_ids(
-                kernel_ids, split_groups, seed=seed, validation_groups=validation_groups
+                kernel_ids, split_groups, seed=seed, validation_groups=validation_groups,
+                training_groups=training_groups,
             ))
     train_ids, validation_ids = set(split["train"]), set(split["validation"])
     if not train_ids or not validation_ids or train_ids & validation_ids:
         raise ValueError("training and validation kernel sets must be nonempty and disjoint")
-    if train_ids | validation_ids != kernel_ids:
-        raise ValueError("checkpoint split does not match the runtime table's kernels")
+    selected_ids = train_ids | validation_ids
+    if not selected_ids.issubset(kernel_ids):
+        raise ValueError("checkpoint split contains kernels absent from the runtime table")
+    kernel_ids = selected_ids
+    contexts = tuple(key for key in contexts if key.kernel_id in kernel_ids)
     if split_groups is not None:
-        if not isinstance(split_groups, dict) or set(split_groups) != kernel_ids or any(
-            not isinstance(group, str) or not group.strip() for group in split_groups.values()
+        if not isinstance(split_groups, dict) or not kernel_ids.issubset(split_groups) or any(
+            not isinstance(split_groups[kernel], str) or not split_groups[kernel].strip()
+            for kernel in kernel_ids
         ):
-            raise ValueError("split groups must map every kernel to a nonempty group name")
+            raise ValueError("split groups must map every selected kernel to a nonempty group name")
         if {split_groups[k] for k in train_ids} & {split_groups[k] for k in validation_ids}:
             raise ValueError("a source group occurs in both training and validation")
 
@@ -178,6 +183,8 @@ def parse_args():
     parser.add_argument("--split-groups", help="JSON mapping of base kernel IDs to source groups")
     parser.add_argument("--validation-groups", type=int, default=2,
                         help="complete groups to reserve when --split-groups is supplied")
+    parser.add_argument("--training-groups", type=int,
+                        help="limit training to this many source groups")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--latency-warmup", type=int, default=3)
     parser.add_argument("--latency-repetitions", type=int, default=5)
@@ -220,7 +227,7 @@ def main():
         args.runtimes, args.token_ids, matrix, args.target_exponent,
         seed=args.seed, validation_kernels=args.validation_kernels,
         problem_columns=args.problem_columns, split_groups=split_groups,
-        validation_groups=args.validation_groups,
+        validation_groups=args.validation_groups, training_groups=args.training_groups,
     )
     context_size = len(train_data[0].problem_size)
     model = build_model(matrix, context_size, len(catalog), args.architecture,

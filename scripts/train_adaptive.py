@@ -69,6 +69,8 @@ def parse_args():
     parser.add_argument("--problem-columns", nargs="+", default=["problem_size"])
     parser.add_argument("--split-groups")
     parser.add_argument("--validation-groups", type=int, default=2)
+    parser.add_argument("--training-groups", type=int,
+                        help="limit training to this many source groups")
     parser.add_argument("--dataset-run-dir", help="raw run used to identify the dataset GPU")
     parser.add_argument("--latency-warmup", type=int, default=3)
     parser.add_argument("--latency-repetitions", type=int, default=10)
@@ -116,6 +118,7 @@ def main():
         args.runtimes, args.token_ids, matrix, args.target_exponent, seed=split_seed,
         validation_kernels=args.validation_kernels, problem_columns=args.problem_columns,
         split_groups=groups, validation_groups=args.validation_groups,
+        training_groups=args.training_groups,
     )
     source_device = dataset_device(args.dataset_run_dir, args.runtimes)
     model = build_model(matrix, len(training[0].problem_size), len(catalog), args.architecture,

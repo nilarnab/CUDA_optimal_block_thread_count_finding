@@ -119,6 +119,19 @@ class OneDAdapterTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "map every kernel"):
             split_grouped_kernel_ids(["a", "b"], {"a": "shared"})
 
+    def test_group_split_can_select_fixed_training_and_validation_group_counts(self):
+        groups = {f"kernel_{index}": f"group_{index // 2}" for index in range(20)}
+        split = split_grouped_kernel_ids(
+            groups, groups, training_groups=4, validation_groups=2, seed=7
+        )
+        train_groups = {groups[kernel] for kernel in split.train}
+        validation_groups = {groups[kernel] for kernel in split.validation}
+        self.assertEqual(len(train_groups), 4)
+        self.assertEqual(len(validation_groups), 2)
+        self.assertFalse(train_groups & validation_groups)
+        self.assertEqual(len(split.train), 8)
+        self.assertEqual(len(split.validation), 4)
+
 
 @unittest.skipUnless(importlib.util.find_spec("torch"), "PyTorch is not installed")
 class OneDTrainingTest(unittest.TestCase):
