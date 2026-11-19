@@ -109,6 +109,48 @@ For the current collection this produces 672 runtime rows:
 It excludes the four square shapes recorded only for `matrix_add`. The raw run
 directory is never modified.
 
+## Import the full public LS-CAT dataset
+
+Clone the official NTNU repository under the ignored raw-data directory and
+convert its archived T4 measurements to the same 16-action schema:
+
+```bash
+git clone --depth 1 https://github.com/NTNU-HPC-Lab/LS-CAT.git \
+  data/raw/ls-cat-official
+
+PYTHONPATH=src uv run --locked python scripts/import_lscat.py \
+  --repository data/raw/ls-cat-official \
+  --output-dir data/processed/lscat_t4_1d \
+  --verbose
+```
+
+The importer keeps only `(1,N)` block shapes for `N=64,...,1024`, averages
+duplicate archived T4 measurements, rejects failure placeholders, retains only
+contexts containing all 16 actions, and groups kernels by original repository
+for leakage-resistant splitting. The generated `sources.json` maps every
+runtime kernel ID to its official CUDA source.
+
+On a CUDA/Clang machine, process only those sources rather than the repository's
+generated benchmark harnesses:
+
+```bash
+uv run --locked python scripts/prepare_frontend.py \
+  --source-manifest data/processed/lscat_t4_1d/sources.json \
+  --source-root data/raw/ls-cat-official \
+  --output-dir data/processed/lscat_t4_1d \
+  --cuda-path "$CONDA_PREFIX" \
+  --gpu-arch sm_75 \
+  --keep-going \
+  --verbose
+```
+
+This frontend step cannot run on macOS because it requires a CUDA toolkit.
+After producing `token_ids.json` and `fasttext_corpus.txt`, train FastText as
+shown below, using paths under `data/processed/lscat_t4_1d`. Training uses
+`--problem-columns m n`, the generated `split_groups.json`, and a substantial
+held-out group count (for example `--validation-groups 300`) rather than two
+groups.
+
 Next prepare LLVM IR, the vocabulary, token IDs, and the FastText corpus on a
 machine with Clang CUDA support:
 
