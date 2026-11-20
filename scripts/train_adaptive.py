@@ -10,18 +10,13 @@ import json
 import math
 from pathlib import Path
 
-from train_sequence import build_model as build_existing_model
 from train_sequence import input_fingerprints, load_datasets, make_loader
 
 
 def build_model(matrix, context_size, action_count, architecture, lstm_hidden_size=128):
-    if architecture == "adaptive":
-        from model.adaptive_config_scorer import AdaptiveConfigurationModel
-        return AdaptiveConfigurationModel(
-            matrix, context_size, action_count, hidden_size=lstm_hidden_size
-        )
-    return build_existing_model(matrix, context_size, action_count, architecture,
-                                lstm_hidden_size=lstm_hidden_size)
+    from model.config_scorer import build_model as build_configuration_model
+
+    return build_configuration_model(matrix, context_size, action_count, architecture, lstm_hidden_size)
 
 
 def dataset_device(run_dir, runtimes_path):

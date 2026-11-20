@@ -25,39 +25,11 @@ def input_fingerprints(runtimes, token_ids=None) -> dict[str, str]:
 
 def build_model(matrix, context_size: int, action_count: int, architecture: str,
                 lstm_hidden_size: int = 128):
-    from encoders.context_encoder import ContextEncoder
-    from encoders.fasttext_encoder import FrozenFastTextEncoder
-    from encoders.lstm_encoder import LSTMEncoder
-    from model.config_scorer import (
-        ConfigurationModel,
-        ConfigurationScorer,
-        ContextOnlyConfigurationModel,
-    )
-    from model.sequence_config_scorer import (
-        FinalStateConfigurationModel,
-        SequenceConfigurationModel,
-    )
+    from model.config_scorer import build_model as build_configuration_model
 
-    if architecture == "context":
-        return ContextOnlyConfigurationModel(matrix, context_size, action_count)
-    if architecture in {"sequence", "final"}:
-        model_class = (
-            SequenceConfigurationModel
-            if architecture == "sequence"
-            else FinalStateConfigurationModel
-        )
-        return model_class(
-            matrix, context_size, action_count, hidden_size=lstm_hidden_size
-        )
-    if architecture != "baseline":
+    if architecture not in {"baseline", "sequence", "final", "context"}:
         raise ValueError(f"unknown architecture: {architecture}")
-    tokens = FrozenFastTextEncoder(matrix)
-    kernel = LSTMEncoder(tokens.output_size, lstm_hidden_size, attention=True)
-    context = ContextEncoder(context_size, 32)
-    return ConfigurationModel(
-        tokens, kernel, context,
-        ConfigurationScorer(kernel.output_size + context.output_size, action_count),
-    )
+    return build_configuration_model(matrix, context_size, action_count, architecture, lstm_hidden_size)
 
 
 def load_datasets(runtime_path, token_path, matrix, exponent, *, split=None, seed=0,

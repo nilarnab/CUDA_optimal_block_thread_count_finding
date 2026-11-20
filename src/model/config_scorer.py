@@ -123,3 +123,36 @@ class ContextOnlyConfigurationModel(nn.Module):
     ) -> torch.Tensor:
         return self.score_cached(self.encode_kernel(tokens, lengths), context)
 
+
+def build_model(matrix, context_size: int, action_count: int, architecture: str,
+                lstm_hidden_size: int = 128):
+    """Recreate the model layouts used by the training runners."""
+    if architecture == "context":
+        return ContextOnlyConfigurationModel(matrix, context_size, action_count)
+    if architecture == "adaptive":
+        from model.adaptive_config_scorer import AdaptiveConfigurationModel
+
+        return AdaptiveConfigurationModel(
+            matrix, context_size, action_count, hidden_size=lstm_hidden_size
+        )
+    if architecture in {"sequence", "final"}:
+        from model.sequence_config_scorer import (
+            FinalStateConfigurationModel,
+            SequenceConfigurationModel,
+        )
+
+        model_class = (
+            SequenceConfigurationModel
+            if architecture == "sequence"
+            else FinalStateConfigurationModel
+        )
+        return model_class(matrix, context_size, action_count, hidden_size=lstm_hidden_size)
+    if architecture != "baseline":
+        raise ValueError(f"unknown architecture: {architecture}")
+    tokens = FrozenFastTextEncoder(matrix)
+    kernel = LSTMEncoder(tokens.output_size, lstm_hidden_size, attention=True)
+    context = ContextEncoder(context_size, 32)
+    return ConfigurationModel(
+        tokens, kernel, context,
+        ConfigurationScorer(kernel.output_size + context.output_size, action_count),
+    )
