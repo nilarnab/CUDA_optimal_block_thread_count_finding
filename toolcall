@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = ROOT / "src" / "launch"
+LIBRARY = "libtoolcall_model.so"
+TOOLCALL_CHECKPOINT =ROOT / "checkpoints/retention_h8_split2_groups3_seed1/adaptive_w8_lambda1e-05_seed1.best.pt"
+TOOLCALL_VOCABULARY = ROOT / "data/processed_1d/vocabulary.json"
+TOOLCALL_GPU_ARCH = "sm_75"
+
+
+def kernel_symbol(ir):
+    # Clang versions use either the PTX calling convention or NVVM metadata.
+    symbol = r'(@(?:"[^"]+"|[-\w.$]+))'
+    kernels = set(re.findall(r"^define\b[^@\n]*\bptx_kernel\b[^@\n]*" + symbol, ir, re.M))
+    kernels.update(re.findall(
+        r"^!\d+\s*=\s*!\{[^@\n]*" + symbol + r'\s*,\s*!"kernel"\s*,\s*i32\s+1\s*\}',
+        ir, re.M,
+    ))
+    if len(kernels) != 1:
+        raise ValueError(f"expected one CUDA kernel in device LLVM IR, found {len(kernels)}")
+    return next(iter(kernels))
+
+
+def fp32_literal(value):
+    if not math.isfinite(value):
+        raise ValueError("cannot export a non-finite checkpoint or kernel value")
+    return value.hex() + "f"
+
+
+def tensor_constant(name, tensor):
+    dimensions = "".join(f"[{size}]" for size in tensor.shape)
+
+    def render(value):
+        if isinstance(value, list):
+            return "{" + ", ".join(map(render, value)) + "}"
+        return fp32_literal(value)
+
+    return f"inline constexpr float {name}{dimensions} = {render(tensor.tolist())};\n"
+
+
+def write_weights(path, engine, *, include_parameters=True):
+    model = engine.model
+    block_sizes = ", ".join(str(config.x) for config in engine.catalog)
+    with path.open("w", encoding="utf-8") as header:
+        header.write("#pragma once\n#include <cstddef>\nnamespace toolcall::weights {\n")
+        header.write(f"inline constexpr unsigned block_sizes[] = {{{block_sizes}}};\n")
+        header.write(f"inline constexpr std::size_t state_width = {model.kernel_encoder.hidden_size};\n")
+        if include_parameters:
+            layers = {
+                "context": model.context_encoder.network[0],
+                "norm": model.context_encoder.network[2],
+                **{f"dense{i}": model.scorer.network[3 * i] for i in range(4)},
+                "attention0": model.attention[0],
+                "attention1": model.attention[2],
+            }
+            header.write(f"inline constexpr float norm_eps = {fp32_literal(layers['norm'].eps)};\n")
+            for name, layer in layers.items():
+                header.write(tensor_constant(name + "_w", layer.weight.detach()))
+                header.write(tensor_constant(name + "_b", layer.bias.detach()))
+        header.write("}\n")
+
+
+def write_kernel(path, representation, *, log_gates=True):
+    import torch
+
+    rows = int(representation.lengths[0])
+    states = representation.states[0, :rows]
+    gates = representation.gates[0, :rows]
+    if log_gates:
+        gates = gates.clamp_min(torch.finfo(states.dtype).tiny).log()
+    path.write_text(
+        '#pragma once\n#include "toolcall_internal.hpp"\nnamespace toolcall::detail {\n'
+        + tensor_constant("kernel_states", states.flatten())
+        + tensor_constant("kernel_gates", gates)
+        + f"inline constexpr Kernel compiled_kernel{{kernel_states, kernel_gates, {rows}, {states.shape[1]}}};\n"
+        + "}\n",
+        encoding="utf-8",
+    )
+
+
+def compile_aot_scorer(path, model, representation):
+    import torch
+
+    from model.adaptive_config_scorer import AdaptiveConfigurationModel, AdaptiveKernelSequence
+
+    if not hasattr(torch._inductor, "aoti_compile_and_package"):
+        raise RuntimeError("--aot requires PyTorch with AOTInductor packaging support")
+
+    class Scorer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.context_encoder = model.context_encoder
+            self.scorer = model.scorer
+            self.attention = model.attention
+
+        def forward(self, context, states, gates):
+            lengths = torch.full((1,), states.shape[1], dtype=torch.long, device=states.device)
+            cache = AdaptiveKernelSequence(states, lengths, gates, lengths)
+            return AdaptiveConfigurationModel.score_cached(self, cache, context)
+
+    # This build has one kernel, so its retained row count is already known.
+    with torch.no_grad():
+        inputs = (torch.ones(1, 3), representation.states.contiguous(),
+                  representation.gates.contiguous())
+        graph = torch.export.export(Scorer().eval(), inputs)
+        torch._inductor.aoti_compile_and_package(graph, package_path=str(path))
+
+    torch_root = Path(torch.__file__).resolve().parent
+    libraries = torch_root / "lib"
+    flags = [
+        "-DTOOLCALL_AOT", f"-D_GLIBCXX_USE_CXX11_ABI={int(torch.compiled_with_cxx11_abi())}",
+        "-isystem", str(torch_root / "include"),
+        "-L", str(libraries), f"-Wl,-rpath,{libraries}", "-ltorch", "-ltorch_cpu", "-lc10",
+    ]
+    if sys.platform.startswith("linux"):
+        flags.append("-ldl")
+    return flags
+
+
+def build(args):
+    sys.path.insert(0, str(ROOT / "src"))
+    from frontend.llvm_compiler import LLVMCompiler
+    from inference import InferenceEngine
+    from model.adaptive_config_scorer import AdaptiveConfigurationModel
+
+    if not args.vocabulary.is_file():
+        raise ValueError(f"provide the original training vocabulary with --vocabulary (missing {args.vocabulary})")
+    engine = InferenceEngine.from_checkpoint(args.checkpoint, args.vocabulary)
+    if not isinstance(engine.model, AdaptiveConfigurationModel) or engine.problem_columns != ("m", "n", "k"):
+        raise ValueError("toolcall expects an adaptive checkpoint with M/N/K context")
+    if any(config.y != 1 or config.z != 1 for config in engine.catalog):
+        raise ValueError("toolcall expects a one-dimensional CUDA block-size catalog")
+
+    source = args.source.resolve()
+    output = args.output.absolute()
+    if source.suffix != ".cu" or not source.is_file():
+        raise ValueError(f"expected a CUDA source file: {source}")
+    if output.resolve() == source or output.is_dir():
+        raise ValueError("binary output must be a separate file")
+    artifact_root = output.parent / ".toolcall"
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix="kernel-", dir=artifact_root))
+    finished = False
+    try:
+        compiler = LLVMCompiler(
+            clang=args.clang, cuda_path=args.cuda_path, gpu_arch=args.gpu_arch,
+            extra_args=("-std=c++17", "-I", str(NATIVE)),
+        )
+        ir_path = compiler.compile(source, stage / "kernel.ll")
+        ir = ir_path.read_text(encoding="utf-8")
+        symbol = kernel_symbol(ir)
+        representation = engine.prepare_kernel(ir).representation
+        write_kernel(stage / "toolcall_kernel_data.hpp", representation, log_gates=not args.aot)
+        write_weights(stage / "toolcall_weights.hpp", engine, include_parameters=not args.aot)
+        package = stage / "scorer.pt2"
+        scorer_flags = compile_aot_scorer(package, engine.model, representation) if args.aot else []
+        (stage / "build.json").write_text(json.dumps({
+            "source": str(source), "kernel_symbol": symbol, "gpu_arch": args.gpu_arch,
+            "checkpoint": str(args.checkpoint.resolve()), "vocabulary": str(args.vocabulary.resolve()),
+            "retained_states": int(representation.lengths[0]),
+            "scorer_backend": "aot" if args.aot else "native",
+        }, indent=2) + "\n", encoding="utf-8")
+
+        cxx = os.environ.get("CXX", "c++")
+        subprocess.run([
+            cxx, "-std=c++17", "-O3", "-fPIC", "-shared",
+            "-I", str(stage), str(NATIVE / "toolcall.cpp"), *scorer_flags, "-o", str(stage / LIBRARY),
+        ], check=True)
+        runpath = f"$ORIGIN/.toolcall/{stage.name}"
+        binary = stage / "program"
+        subprocess.run([
+            args.nvcc, "-std=c++17", "-O3", f"-arch={args.gpu_arch}",
+            "-I", str(NATIVE), "-I", str(stage), str(source), str(NATIVE / "toolcall_runtime.cu"),
+            "-L", str(stage), "-ltoolcall_model",
+            "-Xlinker=-rpath", f"-Xlinker={runpath}", "-o", str(binary),
+        ], check=True)
+        os.replace(binary, output)
+        finished = True
+    finally:
+        if not finished:
+            shutil.rmtree(stage)
+    print(f"Kernel: {symbol}")
+    print(f"Artifacts: {stage}")
+    print(f"Model library: {stage / LIBRARY}")
+    if args.aot:
+        print(f"PyTorch scorer: {package}")
+    print(f"Executable: {output}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Build a CUDA program with model_output support")
+    parser.add_argument("source", type=Path, help="CUDA source with one kernel and a host main()")
+    parser.add_argument("-o", "--output", type=Path, required=True, help="output executable")
+    parser.add_argument("--checkpoint", type=Path, default=TOOLCALL_CHECKPOINT,
+                        help="adaptive checkpoint (default: TOOLCALL_CHECKPOINT)")
+    parser.add_argument("--vocabulary", type=Path, default=TOOLCALL_VOCABULARY,
+                        help="training vocabulary (default: TOOLCALL_VOCABULARY)")
+    parser.add_argument("--gpu-arch", default=TOOLCALL_GPU_ARCH,
+                        help="CUDA target (default: TOOLCALL_GPU_ARCH)")
+    parser.add_argument("--aot", action="store_true", help="compile the PyTorch CPU scorer with AOTInductor")
+    parser.add_argument("--clang", default="clang++")
+    parser.add_argument("--nvcc", default="nvcc")
+    parser.add_argument("--cuda-path")
+    args = parser.parse_args()
+    for name in ("checkpoint", "vocabulary", "gpu_arch"):
+        if not getattr(args, name):
+            parser.error(f"set TOOLCALL_{name.upper()} or pass --{name.replace('_', '-')}")
+    try:
+        build(args)
+    except (ImportError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f"toolcall: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

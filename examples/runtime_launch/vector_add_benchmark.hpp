@@ -1,0 +1,138 @@
+#pragma once
+
+#include "vector_add.cu"
+
+#ifndef __CUDA_ARCH__
+#include <algorithm>
+#include <array>
+#include <charconv>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <stdexcept>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace vector_add_benchmark {
+
+struct LaunchLimits {
+    unsigned block_x, grid_x;
+};
+
+inline std::size_t parse_size(std::string_view input) {
+    std::size_t value = 0;
+    const auto end = input.data() + input.size();
+    const auto parsed = std::from_chars(input.data(), end, value);
+    return parsed.ec == std::errc{} && parsed.ptr == end ? value : 0;
+}
+
+inline void check(cudaError_t status) {
+    if (status == cudaSuccess) return;
+    std::fprintf(stderr, "CUDA: %s\n", cudaGetErrorString(status));
+    std::exit(1);
+}
+
+inline LaunchLimits launch_limits() {
+    int device = 0;
+    cudaDeviceProp properties{};
+    cudaFuncAttributes attributes{};
+    check(cudaGetDevice(&device));
+    check(cudaGetDeviceProperties(&properties, device));
+    check(cudaFuncGetAttributes(&attributes, vector_add));
+    return {
+        static_cast<unsigned>(std::min({properties.maxThreadsPerBlock,
+                                        properties.maxThreadsDim[0], attributes.maxThreadsPerBlock})),
+        static_cast<unsigned>(properties.maxGridSize[0]),
+    };
+}
+
+template <class Select>
+int run(const char* mode, std::size_t side, Select select) try {
+    if (!side || side > std::numeric_limits<std::size_t>::max() / sizeof(float) / side) {
+        std::fprintf(stderr, "M must be a positive integer with room for M*M floats\n");
+        return 2;
+    }
+    const auto work_items = side * side;
+    const auto bytes = work_items * sizeof(float);
+    const auto initial = select(side, work_items);
+
+    std::vector<float> host(work_items, 1.0f);
+    float *a, *b, *out;
+    check(cudaMalloc(&a, bytes));
+    check(cudaMalloc(&b, bytes));
+    check(cudaMalloc(&out, bytes));
+    check(cudaMemcpy(a, host.data(), bytes, cudaMemcpyHostToDevice));
+    std::fill(host.begin(), host.end(), 2.0f);
+    check(cudaMemcpy(b, host.data(), bytes, cudaMemcpyHostToDevice));
+
+    const auto launch = [&](std::pair<unsigned, unsigned> configuration) {
+        const auto [grid, block] = configuration;
+        vector_add<<<grid, block>>>(a, b, out, work_items);
+        check(cudaGetLastError());
+    };
+    const auto verify = [&] {
+        check(cudaMemcpy(host.data(), out, bytes, cudaMemcpyDeviceToHost));
+        if (!std::all_of(host.begin(), host.end(), [](float value) { return value == 3.0f; })) {
+            throw std::runtime_error("vector add produced incorrect output");
+        }
+    };
+    check(cudaMemset(out, 0, bytes));
+    launch(initial);
+    verify();
+
+    using Clock = std::chrono::steady_clock;
+    using Microseconds = std::chrono::duration<double, std::micro>;
+    constexpr int warmups = 5, trials = 51;
+    std::array<double, trials> selection_us{}, gpu_us{}, total_us{};
+    cudaEvent_t start, stop;
+    check(cudaEventCreate(&start));
+    check(cudaEventCreate(&stop));
+    for (int trial = 0; trial < warmups + trials; ++trial) {
+        const auto begin = Clock::now();
+        const auto configuration = select(side, work_items);
+        const auto selected = Clock::now();
+        launch(configuration);
+        check(cudaStreamSynchronize(nullptr));
+        const auto done = Clock::now();
+
+        // A separate launch keeps event instrumentation out of the host timer.
+        check(cudaEventRecord(start));
+        launch(configuration);
+        check(cudaEventRecord(stop));
+        check(cudaEventSynchronize(stop));
+        float elapsed_ms = 0;
+        check(cudaEventElapsedTime(&elapsed_ms, start, stop));
+        if (trial < warmups) continue;
+
+        const auto index = trial - warmups;
+        selection_us[index] = Microseconds(selected - begin).count();
+        gpu_us[index] = 1000.0 * elapsed_ms;
+        total_us[index] = Microseconds(done - begin).count();
+    }
+    check(cudaEventDestroy(start));
+    check(cudaEventDestroy(stop));
+    verify();
+    check(cudaFree(a));
+    check(cudaFree(b));
+    check(cudaFree(out));
+
+    const auto median = [](auto& values) {
+        auto middle = values.begin() + values.size() / 2;
+        std::nth_element(values.begin(), middle, values.end());
+        return *middle;
+    };
+    const auto [grid, block] = initial;
+    std::printf("%s M=%zu elements=%zu grid=%u block=%u trials=%d verified\n",
+                mode, side, work_items, grid, block, trials);
+    std::printf("gpu_us=%.3f selection_us=%.3f total_us=%.3f\n",
+                median(gpu_us), median(selection_us), median(total_us));
+    return 0;
+} catch (const std::exception& error) {
+    std::fprintf(stderr, "%s\n", error.what());
+    return 1;
+}
+
+}  // namespace vector_add_benchmark
+#endif
