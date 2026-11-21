@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from dataclasses import replace
 import json
 import math
 import os
@@ -70,6 +71,26 @@ def write_weights(path, engine, *, include_parameters=True):
                 header.write(tensor_constant(name + "_w", layer.weight.detach()))
                 header.write(tensor_constant(name + "_b", layer.bias.detach()))
         header.write("}\n")
+
+
+def cap_retained_states(representation, fraction):
+    rows = int(representation.lengths[0])
+    limit = max(1, int(rows * fraction))
+    if limit == rows:
+        return representation
+
+    import torch
+
+    # The last retained row is the mandatory full-input LSTM summary.
+    ranked = torch.argsort(representation.gates[0, :rows - 1], descending=True, stable=True)
+    selected = ranked[:limit - 1].sort().values
+    selected = torch.cat((selected, selected.new_tensor([rows - 1])))
+    return replace(
+        representation,
+        states=representation.states.index_select(1, selected),
+        lengths=representation.lengths.new_full((1,), limit),
+        gates=representation.gates.index_select(1, selected),
+    )
 
 
 def write_kernel(path, representation, *, log_gates=True):
@@ -163,6 +184,9 @@ def build(args):
         ir = ir_path.read_text(encoding="utf-8")
         symbol = kernel_symbol(ir)
         representation = engine.prepare_kernel(ir).representation
+        learned_rows = int(representation.lengths[0])
+        representation = cap_retained_states(representation, args.retain_fraction)
+        retained_rows = int(representation.lengths[0])
         write_kernel(stage / "toolcall_kernel_data.hpp", representation, log_gates=not args.aot)
         write_weights(stage / "toolcall_weights.hpp", engine, include_parameters=not args.aot)
         package = stage / "scorer.pt2"
@@ -170,7 +194,8 @@ def build(args):
         (stage / "build.json").write_text(json.dumps({
             "source": str(source), "kernel_symbol": symbol, "gpu_arch": args.gpu_arch,
             "checkpoint": str(args.checkpoint.resolve()), "vocabulary": str(args.vocabulary.resolve()),
-            "retained_states": int(representation.lengths[0]),
+            "learned_retained_states": learned_rows, "retained_states": retained_rows,
+            "retain_fraction": args.retain_fraction,
             "problem_columns": engine.problem_columns,
             "scorer_backend": "aot" if args.aot else "native",
         }, indent=2) + "\n", encoding="utf-8")
@@ -194,6 +219,7 @@ def build(args):
         if not finished:
             shutil.rmtree(stage)
     print(f"Kernel: {symbol}")
+    print(f"Retained states: {retained_rows} ({learned_rows} before deployment cap)")
     print(f"Artifacts: {stage}")
     print(f"Model library: {stage / LIBRARY}")
     if args.aot:
@@ -212,10 +238,14 @@ def main():
     parser.add_argument("--gpu-arch", default=TOOLCALL_GPU_ARCH,
                         help="CUDA target (default: %(default)s)")
     parser.add_argument("--aot", action="store_true", help="compile the PyTorch CPU scorer with AOTInductor")
+    parser.add_argument("--retain-fraction", type=float, default=1.0,
+                        help="cap the exported rows at this fraction of learned retained states (0 < fraction <= 1)")
     parser.add_argument("--clang", default="clang++")
     parser.add_argument("--nvcc", default="nvcc")
     parser.add_argument("--cuda-path")
     args = parser.parse_args()
+    if not 0 < args.retain_fraction <= 1:
+        parser.error("--retain-fraction must be greater than 0 and at most 1")
     if not args.gpu_arch:
         parser.error("--gpu-arch must be nonempty")
     try:

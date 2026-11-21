@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import runpy
 import tempfile
 import unittest
 
@@ -54,6 +55,28 @@ class RuntimeInferenceTest(unittest.TestCase):
             Vocabulary({"<PAD>": 0, "<UNK>": 1}).save(vocabulary)
             with self.assertRaisesRegex(ValueError, "vocabulary IDs"):
                 InferenceEngine.from_checkpoint(checkpoint, vocabulary)
+
+
+    def test_toolcall_caps_rows_by_gate_strength_and_preserves_final_state(self):
+        import torch
+
+        from model.adaptive_config_scorer import AdaptiveKernelSequence
+
+        toolcall = Path(__file__).resolve().parents[1] / "toolcall"
+        cap = runpy.run_path(str(toolcall))["cap_retained_states"]
+        representation = AdaptiveKernelSequence(
+            torch.arange(6, dtype=torch.float32).reshape(1, 6, 1),
+            torch.tensor([6]), torch.tensor([[0.25, 0.9, 0.9, 0.4, 1.0, 1.0]]),
+            torch.tensor([4.5]),
+        )
+        self.assertIs(cap(representation, 1.0), representation)
+        reduced = cap(representation, 0.5)
+        self.assertEqual(reduced.lengths.tolist(), [3])
+        torch.testing.assert_close(reduced.states, representation.states[:, [1, 4, 5]])
+        torch.testing.assert_close(reduced.gates, representation.gates[:, [1, 4, 5]])
+        final_only = cap(representation, 0.01)
+        self.assertEqual(final_only.lengths.tolist(), [1])
+        torch.testing.assert_close(final_only.states, representation.states[:, -1:])
 
 
 if __name__ == "__main__":

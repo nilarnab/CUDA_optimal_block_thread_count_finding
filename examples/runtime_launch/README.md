@@ -151,6 +151,136 @@ Use the same `M` and `N` for both programs in each pair. The fixed
 executables take the block size as a third argument. Compare `gpu_us` for
 kernel execution and `total_us` for latency including block selection.
 
+### Collect a block-size sweep
+
+Run from the repository root after building the two softmax benchmarks above.
+
+```bash
+python -m pip install wandb matplotlib
+wandb login
+python scripts/collect_launch_benchmarks.py --model-bin build/softmax_model \
+  --wandb --plot results/launch_benchmarks/softmax_fine.png
+```
+
+The defaults cover `150051 1500`, `180051 1500`, `150051 2000`, and
+`200051 2000`. Softmax allocates two float arrays on the GPU and two on
+the host, up to about 3.2 GB of array storage on each for the largest shape.
+Each shape runs the model once and each fixed block once by default.
+The fixed sweep covers 64 through 1024 threads in steps of 64 and adds
+32-thread steps within 128 threads of the model's choice. For example,
+a prediction of 576 adds 480, 544, 608, and 672 to the sweep.
+Use `--blocks` to test a custom list plus the model's chosen block.
+
+The timestamped CSV under `results/launch_benchmarks/` contains one row
+per completed binary run. `total_us`, `gpu_us`, and `selection_us`
+are the benchmark's separate medians over 51 trials. `process_wall_s`
+includes startup, allocations, copies, warm-up, all trials, and verification.
+Local diamonds mark model choices at their actual block sizes. W&B includes
+a measurement table, the CSV, and charts with labeled model reference lines.
+
+For toolcall executables, `retained_states` comes from the matching
+`build.json` and `full_states` counts the pre-gate token states in
+`kernel.ll`. `state_reduction_pct` is the percentage of rows removed.
+If the collector cannot find the artifact directory from the executable,
+pass `--build-json /path/to/.toolcall/kernel-ID/build.json`.
+
+To use other binaries, supply the argument list for each size. The
+collector appends the block size only for the fixed binary. Both programs
+must print the verified summary and timing fields used by these examples.
+
+```bash
+python scripts/collect_launch_benchmarks.py --kernel vector_add \
+  --model-bin build/vector_add_model --fixed-bin build/vector_add_fixed \
+  --size 8192 --size 10240 --size 12288 --blocks 256 512 576 640 \
+  --csv results/launch_benchmarks/vector_add.csv --wandb
+```
+
+Run without `--wandb` or `--plot` for a CSV-only collection with no
+additional Python packages. Use `--wandb-project` and `--wandb-entity`
+to change the upload destination.
+
+### Linear layer
+
+The [linear layer benchmark](bench_linear_layer.cu) uses the
+[LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/6580/20/linearLayerForward.cu)
+to compute an `M × N` output with reduction width `K`. The model receives
+`(M, N)` and selects the x block size. The launch has `ceil(N / block)`
+blocks in x and `M` rows in y for both binaries.
+
+```bash
+mkdir -p build
+nvcc -std=c++17 -O3 -arch=sm_75 examples/runtime_launch/bench_linear_layer_fixed.cu -o build/linear_layer_fixed
+./toolcall --aot examples/runtime_launch/bench_linear_layer.cu -o build/linear_layer_aot
+
+./build/linear_layer_aot 1600 1600 8192
+./build/linear_layer_fixed 1600 1600 8192 256
+```
+
+The model build uses learned gating with the default checkpoint.
+Run the same block sweep as for softmax with three arguments per size.
+
+```bash
+python scripts/collect_launch_benchmarks.py --kernel linear_layer \
+  --model-bin build/linear_layer_aot --fixed-bin build/linear_layer_fixed \
+  --size 1600 1600 8192 --size 2240 2240 8192 \
+  --size 4096 4096 8192 --size 6144 6144 6144 \
+  --wandb --plot results/launch_benchmarks/linear_layer.png
+```
+
+The largest shape uses about 432 MiB of GPU buffer space. The benchmark
+checks all outputs for finite values, compares small cases fully against
+a CPU reference, and checks up to 64 CPU reference values in large cases.
+The timing and gate-count columns are the same as in the other benchmarks.
+`grid` reports the x dimension in the CSV.
+
+### ComputeOrientations
+
+The [orientation benchmark](bench_compute_orientations.cu) adapts the
+[LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10319/29/ComputeOrientations.cu)
+to compute 32-bin orientation histograms from a 15 × 15 image patch per
+keypoint. Each warp owns one keypoint and its shared memory. The arguments
+are `KEYPOINTS IMAGE_SIDE`; the fixed binary also takes `FIXED_BLOCK`.
+The model sees `(KEYPOINTS, IMAGE_SIDE)`. The grid covers one warp per
+keypoint, including a partial last block when needed.
+
+```bash
+mkdir -p build
+nvcc -std=c++17 -O3 -arch=sm_75 \
+  examples/runtime_launch/bench_compute_orientations_fixed.cu -o build/compute_orientations_fixed
+./toolcall --aot examples/runtime_launch/bench_compute_orientations.cu -o build/compute_orientations_aot
+
+python scripts/collect_launch_benchmarks.py --kernel compute_orientations \
+  --model-bin build/compute_orientations_aot --fixed-bin build/compute_orientations_fixed \
+  --size 524288 4096 --size 1048576 4096 --size 2097152 4096 --size 4194304 4096 \
+  --blocks 64 96 128 160 192 224 256 288 320 352 384 416 448 480 512 544 576 \
+  --wandb --plot results/launch_benchmarks/compute_orientations.png
+```
+
+The explicit block list keeps the sweep within the kernel's launch limit.
+A 576-thread block uses 47.25 KiB of shared memory. The largest input
+uses 112 MiB of GPU buffers. Each run checks both angles against a CPU
+reference for up to 64 keypoints and scans every output for invalid angles.
+Build with the default learned gates to measure natural pruning in the CSV.
+
+### Test a smaller kernel representation with the same checkpoint
+
+```bash
+./toolcall --retain-fraction 0.75 examples/runtime_launch/bench_softmax.cu \
+  -o build/softmax_model_keep75
+```
+
+The build applies the checkpoint's learned gate first. The optional cap
+then keeps the highest-gated rows up to 75% of that count, rounded down,
+with the final LSTM state always retained and counted toward the limit.
+The selected states stay in their original order. The cap works with
+both the native scorer and `--aot`.
+
+The printed artifact directory contains `build.json` with
+`learned_retained_states` before the cap and `retained_states` after it.
+The collector uses the latter as the number of rows scored at runtime.
+Compare capped and uncapped binaries built with the same checkpoint and
+backend using the same inputs.
+
 ## Optional PyTorch-compiled scorer
 
 Add `--aot` to compile the existing Python scorer for the CPU with
