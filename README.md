@@ -4,6 +4,9 @@ The repository now also contains a separate, modular Python implementation of
 the learned CUDA thread-block selector. See [ML_README.md](ML_README.md). The
 existing heater and thermal experiment are unchanged.
 
+To use a trained selector with your own CUDA kernel, see the
+[runtime launch example](examples/runtime_launch/README.md).
+
 For the collected LS-CAT pilot, begin with `scripts/prepare_pilot_dataset.py`;
 it converts the saved measurements into the 16-action NLP baseline format.
 The Python project is managed with `uv`; run `uv sync --all-extras` after
