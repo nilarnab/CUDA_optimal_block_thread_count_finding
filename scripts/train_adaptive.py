@@ -57,6 +57,10 @@ def parse_args():
     parser.add_argument("--lstm-hidden-size", type=int, default=128,
                         help="features per LSTM timestep; independent of retained sequence length")
     parser.add_argument("--length-penalty", type=float, default=1e-4)
+    parser.add_argument("--kl-weight", type=float, default=0.0,
+                        help="EMA-teacher KL stability penalty; zero disables it")
+    parser.add_argument("--kl-temperature", type=float, default=2.0)
+    parser.add_argument("--kl-ema-decay", type=float, default=0.99)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--loss", choices=("bce", "mse", "regret"), default="bce")
@@ -86,6 +90,12 @@ def parse_args():
         parser.error("LSTM hidden size must be positive")
     if not math.isfinite(args.length_penalty) or args.length_penalty < 0:
         parser.error("length penalty must be finite and nonnegative")
+    if not math.isfinite(args.kl_weight) or args.kl_weight < 0:
+        parser.error("KL weight must be finite and nonnegative")
+    if not math.isfinite(args.kl_temperature) or args.kl_temperature <= 0:
+        parser.error("KL temperature must be finite and positive")
+    if not math.isfinite(args.kl_ema_decay) or not 0 <= args.kl_ema_decay < 1:
+        parser.error("KL EMA decay must be finite and in [0, 1)")
     if args.latency_warmup < 0 or args.latency_repetitions < 1:
         parser.error("latency warmup must be nonnegative and repetitions positive")
     if args.architecture != "context" and (not args.token_ids or not args.embedding_matrix):
@@ -125,7 +135,14 @@ def main():
                         lstm_hidden_size=args.lstm_hidden_size)
     coefficient = args.length_penalty if args.architecture == "adaptive" else 0.0
     config = TrainerConfig(epochs=args.epochs, loss=args.loss, device=args.device, verbose=args.verbose)
-    trainer = AdaptiveTrainer(model, config, length_penalty=coefficient)
+    trainer = AdaptiveTrainer(
+        model,
+        config,
+        length_penalty=coefficient,
+        kl_weight=args.kl_weight,
+        kl_temperature=args.kl_temperature,
+        kl_ema_decay=args.kl_ema_decay,
+    )
     train_loader = make_loader(training, args.batch_size, shuffle=True, seed=args.seed)
     validation_loader = make_loader(validation, args.batch_size)
     checkpoint = Path(args.checkpoint or f"checkpoints/{args.architecture}.pt")
@@ -142,12 +159,16 @@ def main():
         ),
         "seed": args.seed, "split_seed": split_seed,
         "batch_size": args.batch_size, "length_penalty": coefficient,
+        "kl_weight": args.kl_weight, "kl_temperature": args.kl_temperature,
+        "kl_ema_decay": args.kl_ema_decay,
         "dataset_device": source_device, "training_samples": len(training), "validation_samples": len(validation),
         "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
     }
     environment = timing_environment(args.device, source_device)
     if args.verbose:
-        print(f"[adaptive:model] {args.architecture} hidden_size={args.lstm_hidden_size} lambda={coefficient:g}")
+        print(f"[adaptive:model] {args.architecture} hidden_size={args.lstm_hidden_size} "
+              f"lambda={coefficient:g} kl_weight={args.kl_weight:g} "
+              f"kl_temperature={args.kl_temperature:g} kl_ema_decay={args.kl_ema_decay:g}")
         print(f"[adaptive:split] {metadata['split']}")
         print(f"[adaptive:timing] {environment}")
     run = None
@@ -182,6 +203,8 @@ def main():
             metrics["compression/validation_gate_open_fraction"] = values[
                 "validation_gate_open_fraction"
             ]
+            metrics["train/kl_loss"] = values["training_kl_loss"]
+            metrics["train/weighted_kl_loss"] = args.kl_weight * values["training_kl_loss"]
             metrics["retention/validation_nontrivial_variable_length"] = values["validation_nontrivial_variable_length"]
             run.log(metrics, step=values["epoch"])
 

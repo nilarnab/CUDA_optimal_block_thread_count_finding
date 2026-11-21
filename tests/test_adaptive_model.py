@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import unittest
 
 
@@ -135,6 +136,27 @@ class AdaptiveModelTest(unittest.TestCase):
         for value in (-1, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
                 AdaptiveTrainer(self.model, TrainerConfig(), length_penalty=value)
+
+    def test_optional_ema_kl_regularization(self):
+        torch = self.torch
+        from training.adaptive_trainer import AdaptiveTrainer
+        from training.supervised_trainer import TrainerConfig
+
+        batch = {"tokens": self.tokens, "lengths": self.lengths, "context": self.context,
+                 "kernel_ids": ["a", "b"], "runtimes": torch.tensor([[1., 2., 3.], [3., 1., 2.]]),
+                 "targets": torch.tensor([[1., .1, .01], [.01, 1., .1]])}
+        trainer = AdaptiveTrainer(
+            self.model, TrainerConfig(epochs=1), kl_weight=0.01,
+            kl_temperature=2.0, kl_ema_decay=0.9,
+        )
+        history = trainer.fit([batch], [batch])
+        self.assertIsNotNone(trainer.ema_teacher)
+        self.assertGreaterEqual(history[-1]["training_kl_loss"], 0)
+        self.assertTrue(math.isfinite(history[-1]["training_kl_loss"]))
+        self.assertFalse(any(parameter.requires_grad for parameter in trainer.ema_teacher.parameters()))
+        for keyword, value in (("kl_weight", -1), ("kl_temperature", 0), ("kl_ema_decay", 1)):
+            with self.assertRaises(ValueError):
+                AdaptiveTrainer(self.model, TrainerConfig(), **{keyword: value})
 
 
 if __name__ == "__main__":

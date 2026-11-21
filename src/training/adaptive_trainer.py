@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import statistics
 
 import torch
+from torch.nn import functional as F
 
 from training.metrics import RuntimeMetrics, runtime_metrics
 from training.sequence_trainer import SequenceTrainer
@@ -13,17 +15,65 @@ from training.retention_evaluation import length_evidence
 
 
 class AdaptiveTrainer(SequenceTrainer):
-    def __init__(self, model, config, *, length_penalty: float = 0.0):
+    def __init__(
+        self,
+        model,
+        config,
+        *,
+        length_penalty: float = 0.0,
+        kl_weight: float = 0.0,
+        kl_temperature: float = 2.0,
+        kl_ema_decay: float = 0.99,
+    ):
         if not math.isfinite(length_penalty) or length_penalty < 0:
             raise ValueError("length penalty must be finite and nonnegative")
+        if not math.isfinite(kl_weight) or kl_weight < 0:
+            raise ValueError("KL weight must be finite and nonnegative")
+        if not math.isfinite(kl_temperature) or kl_temperature <= 0:
+            raise ValueError("KL temperature must be finite and positive")
+        if not math.isfinite(kl_ema_decay) or not 0 <= kl_ema_decay < 1:
+            raise ValueError("KL EMA decay must be finite and in [0, 1)")
         super().__init__(model, config)
         self.length_penalty = length_penalty
+        self.kl_weight = kl_weight
+        self.kl_temperature = kl_temperature
+        self.kl_ema_decay = kl_ema_decay
+        self.ema_teacher = None
+        if kl_weight:
+            self.ema_teacher = copy.deepcopy(self.model).requires_grad_(False).eval()
         self.length_history = []
+
+    def _teacher_logits(self, batch):
+        if self.ema_teacher is None:
+            return None
+        with torch.no_grad():
+            cached = self.ema_teacher.encode_kernel(batch["tokens"], batch["lengths"])
+            return self.ema_teacher.score_cached(cached, batch["context"])
+
+    @torch.no_grad()
+    def _update_ema_teacher(self):
+        if self.ema_teacher is None:
+            return
+        decay = self.kl_ema_decay
+        for teacher, current in zip(self.ema_teacher.parameters(), self.model.parameters()):
+            teacher.mul_(decay).add_(current.detach(), alpha=1 - decay)
+        for teacher, current in zip(self.ema_teacher.buffers(), self.model.buffers()):
+            teacher.copy_(current)
+
+    def _kl_loss(self, logits, teacher_logits):
+        if teacher_logits is None:
+            return logits.new_zeros(())
+        temperature = self.kl_temperature
+        return F.kl_div(
+            F.log_softmax(logits / temperature, dim=-1),
+            F.softmax(teacher_logits / temperature, dim=-1),
+            reduction="batchmean",
+        ) * temperature**2
 
     def _epoch(self, batches, *, training, epoch):
         self.model.train(training)
         count = 0
-        total_task = total_objective = total_expected = 0.0
+        total_task = total_objective = total_expected = total_kl = 0.0
         logits_all, runtimes_all, rows = [], [], []
         with torch.set_grad_enabled(training):
             for batch in batches:
@@ -44,7 +94,13 @@ class AdaptiveTrainer(SequenceTrainer):
                 )
                 expected = getattr(cached, "expected_lengths", actual.float())
                 task_loss = self.loss(logits, batch["targets"])
-                loss = task_loss + self.length_penalty * expected.mean()
+                teacher_logits = self._teacher_logits(batch) if training else None
+                kl_loss = self._kl_loss(logits, teacher_logits)
+                loss = (
+                    task_loss
+                    + self.length_penalty * expected.mean()
+                    + self.kl_weight * kl_loss
+                )
                 if not bool(torch.isfinite(loss)):
                     raise FloatingPointError("non-finite task/length objective")
                 if training:
@@ -52,11 +108,13 @@ class AdaptiveTrainer(SequenceTrainer):
                     if self.config.gradient_clip is not None:
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
                     self.optimizer.step()
+                    self._update_ema_teacher()
                 size = logits.size(0)
                 count += size
                 total_task += float(task_loss.detach()) * size
                 total_objective += float(loss.detach()) * size
                 total_expected += float(expected.detach().sum())
+                total_kl += float(kl_loss.detach()) * size
                 if not training:
                     logits_all.append(logits.cpu())
                     runtimes_all.append(batch["runtimes"].cpu())
@@ -71,7 +129,7 @@ class AdaptiveTrainer(SequenceTrainer):
         if not count:
             raise ValueError("loader produced no batches")
         result = {"loss": total_objective / count, "task_loss": total_task / count,
-                  "expected_h": total_expected / count}
+                  "expected_h": total_expected / count, "kl_loss": total_kl / count}
         if not training:
             result.update(runtime_metrics(torch.cat(logits_all), torch.cat(runtimes_all)).__dict__)
             retained_lengths = [row["learned_h"] for row in rows]
@@ -111,6 +169,7 @@ class AdaptiveTrainer(SequenceTrainer):
             values = {
                 "epoch": epoch, "training_loss": train["loss"],
                 "training_task_loss": train["task_loss"], "training_expected_h": train["expected_h"],
+                "training_kl_loss": train["kl_loss"],
                 "validation_loss": validation["loss"], "validation_task_loss": validation["task_loss"],
                 "validation_expected_h": validation["expected_h"],
                 "validation_h_mean": validation["h_mean"], "validation_h_std": validation["h_std"],
@@ -130,6 +189,7 @@ class AdaptiveTrainer(SequenceTrainer):
                 )
                 print(f"[adaptive:epoch] {epoch}/{self.config.epochs} "
                       f"task={train['task_loss']:.6f} expected_h={train['expected_h']:.2f} "
+                      f"kl={train['kl_loss']:.6f} "
                       f"validation_task={validation['task_loss']:.6f} "
                       f"h={validation['h_mean']:.2f}±{validation['h_std']:.2f} "
                       f"[{validation['h_min']},{validation['h_max']}] "
