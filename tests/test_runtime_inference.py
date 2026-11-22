@@ -41,7 +41,7 @@ class RuntimeInferenceTest(unittest.TestCase):
                     }, checkpoint)
                     engine = InferenceEngine.from_checkpoint(checkpoint, vocabulary)
                     self.assertEqual(engine.problem_columns, columns)
-                    cached = engine.prepare_kernel("define void @vector_add()")
+                    cached = engine.prepare_kernel("define void @example_kernel()")
                     states = getattr(cached.representation, "states", cached.representation)
                     self.assertEqual(states.size(-1), 0 if architecture == "context" else width)
                     self.assertEqual(engine.predict_cached(cached, (64, 1, 1)[:context_size]).configuration.x, 256)
