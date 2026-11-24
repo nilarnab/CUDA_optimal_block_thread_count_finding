@@ -23,13 +23,12 @@ This example takes `M` vectors of `N` logits and computes a separate
 softmax for each vector. It subtracts the vector maximum before exponentiation
 and checks the probabilities against a CPU reference. One GPU thread processes
 one vector, so the scorer receives `(M, N)` and the grid covers `M` work items.
-[Standalone entry point](softmax/toolcall_softmax.cu)
+[Softmax model benchmark](softmax/softmax_model.cu)
 
 ```bash
 softmax=examples/runtime_launch/softmax
-./toolcall "$softmax/softmax_model.cu" \
-  --link-source "$softmax/toolcall_softmax.cu" -o build/softmax
-./build/softmax 257 67
+./toolcall "$softmax/softmax_model.cu" -o build/softmax_model
+./build/softmax_model 257 67
 ```
 
 ## Use the API in your own kernel
@@ -76,7 +75,7 @@ Preserve this relative layout when moving the executable.
 
 ```text
 build/
-├── softmax
+├── softmax_model
 └── .toolcall/
     └── kernel-…/
         ├── libtoolcall_model.so
@@ -92,23 +91,19 @@ the package. The generated LLVM IR and headers are build artifacts.
 
 ## Benchmark source layout
 
-Each kernel has its own folder and separate model and fixed executables.
+Each kernel folder has two CUDA source files. Both contain the same GPU
+kernel, input setup, benchmark, and output checks.
 
-| Kernel | CUDA implementation | Model launcher | Model benchmark | Fixed launcher | Fixed benchmark |
-| --- | --- | --- | --- | --- | --- |
-| Softmax | [Kernel](softmax/kernel.cuh) | [Launcher](softmax/softmax_model.cu) | [Benchmark](softmax/bench_softmax_model.cu) | [Launcher](softmax/softmax_fixed.cu) | [Benchmark](softmax/bench_softmax_fixed.cu) |
-| ComputeOrientations | [Kernel](compute_orientations/kernel.cuh) | [Launcher](compute_orientations/compute_orientations_model.cu) | [Benchmark](compute_orientations/bench_compute_orientations_model.cu) | [Launcher](compute_orientations/compute_orientations_fixed.cu) | [Benchmark](compute_orientations/bench_compute_orientations_fixed.cu) |
-| Matrix multiply and ReLU | [Kernel](matrix_multiply_and_relu/kernel.cuh) | [Launcher](matrix_multiply_and_relu/matrix_multiply_and_relu_model.cu) | [Benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_model.cu) | [Launcher](matrix_multiply_and_relu/matrix_multiply_and_relu_fixed.cu) | [Benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_fixed.cu) |
+| Kernel | Model benchmark | Fixed benchmark |
+| --- | --- | --- |
+| Softmax | [softmax_model.cu](softmax/softmax_model.cu) | [softmax_fixed.cu](softmax/softmax_fixed.cu) |
+| ComputeOrientations | [compute_orientations_model.cu](compute_orientations/compute_orientations_model.cu) | [compute_orientations_fixed.cu](compute_orientations/compute_orientations_fixed.cu) |
+| Matrix multiply and ReLU | [matrix_multiply_and_relu_model.cu](matrix_multiply_and_relu/matrix_multiply_and_relu_model.cu) | [matrix_multiply_and_relu_fixed.cu](matrix_multiply_and_relu/matrix_multiply_and_relu_fixed.cu) |
 
-The model launcher calls `toolcall::model_output()` and launches the kernel
-with the selected configuration. The fixed launcher validates and uses
-`FIXED_BLOCK`, the last argument to the fixed benchmark. Each folder's
-`launch.hpp` declares these functions and its `benchmark.hpp` shares input
-setup, timing, and output checks between the two benchmarks.
-
-Build the model launcher with `toolcall` and pass its benchmark with
-`--link-source`. Build the fixed launcher and its benchmark together with
-`nvcc`.
+Build the `*_model.cu` file with `toolcall`. It calls
+`toolcall::model_output()` to select the launch configuration. Build the
+`*_fixed.cu` file with `nvcc`. Its last argument is `FIXED_BLOCK`. The
+[shared timing helpers](runtime_benchmark.hpp) sit above the kernel folders.
 
 ## Benchmark against a fixed block
 
@@ -120,9 +115,8 @@ argument.
 mkdir -p build
 softmax=examples/runtime_launch/softmax
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  "$softmax/softmax_fixed.cu" "$softmax/bench_softmax_fixed.cu" -o build/softmax_fixed
-./toolcall "$softmax/softmax_model.cu" \
-  --link-source "$softmax/bench_softmax_model.cu" -o build/softmax_model
+  "$softmax/softmax_fixed.cu" -o build/softmax_fixed
+./toolcall "$softmax/softmax_model.cu" -o build/softmax_model
 
 ./build/softmax_fixed 2051 67 256
 ./build/softmax_model 2051 67
@@ -178,7 +172,7 @@ to change the upload destination.
 
 ### Matrix multiply and ReLU
 
-The [ReLU benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_model.cu) adapts the
+The [ReLU benchmark](matrix_multiply_and_relu/matrix_multiply_and_relu_model.cu) adapts the
 [LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/6580/8/matrixMultiplyAndRelu.cu)
 to compute a matrix product with row bias and ReLU. It accepts `M N K`
 and uses 32-column tiles. Its two outputs are the preactivation and
@@ -188,10 +182,9 @@ ReLU result. The largest example uses about 576 MiB of GPU buffers.
 mkdir -p build
 relu=examples/runtime_launch/matrix_multiply_and_relu
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  "$relu/matrix_multiply_and_relu_fixed.cu" \
-  "$relu/bench_matrix_multiply_and_relu_fixed.cu" -o build/matrix_multiply_and_relu_fixed
+  "$relu/matrix_multiply_and_relu_fixed.cu" -o build/matrix_multiply_and_relu_fixed
 ./toolcall "$relu/matrix_multiply_and_relu_model.cu" \
-  --link-source "$relu/bench_matrix_multiply_and_relu_model.cu" -o build/matrix_multiply_and_relu_aot
+  -o build/matrix_multiply_and_relu_aot
 
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 python scripts/collect_launch_benchmarks.py --kernel matrix_multiply_and_relu \
@@ -204,7 +197,7 @@ python scripts/collect_launch_benchmarks.py --kernel matrix_multiply_and_relu \
 
 ### ComputeOrientations
 
-The [orientation benchmark](compute_orientations/bench_compute_orientations_model.cu) adapts the
+The [orientation benchmark](compute_orientations/compute_orientations_model.cu) adapts the
 [LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10319/29/ComputeOrientations.cu)
 to compute 32-bin orientation histograms from a 15 × 15 image patch per
 keypoint. Each warp owns one keypoint and its shared memory. The arguments
@@ -216,10 +209,9 @@ keypoint, including a partial last block when needed.
 mkdir -p build
 orient=examples/runtime_launch/compute_orientations
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  "$orient/compute_orientations_fixed.cu" \
-  "$orient/bench_compute_orientations_fixed.cu" -o build/compute_orientations_fixed
+  "$orient/compute_orientations_fixed.cu" -o build/compute_orientations_fixed
 ./toolcall "$orient/compute_orientations_model.cu" \
-  --link-source "$orient/bench_compute_orientations_model.cu" -o build/compute_orientations_aot
+  -o build/compute_orientations_aot
 
 python scripts/collect_launch_benchmarks.py --kernel compute_orientations \
   --model-bin build/compute_orientations_aot --fixed-bin build/compute_orientations_fixed \
@@ -242,8 +234,7 @@ usual CUDA and system libraries at runtime. Both backends use the same
 
 ```bash
 softmax=examples/runtime_launch/softmax
-./toolcall --native "$softmax/softmax_model.cu" \
-  --link-source "$softmax/bench_softmax_model.cu" -o build/softmax_native
+./toolcall --native "$softmax/softmax_model.cu" -o build/softmax_native
 ./build/softmax_native 2051 67
 ```
 
