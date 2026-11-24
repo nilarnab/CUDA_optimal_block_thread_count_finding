@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""Compile CUDA files to LLVM IR and create reusable token artifacts."""
-
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -12,28 +7,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument(
-        "--cuda-dir", help="directory searched recursively for .cu files"
+        "--cuda-dir",
     )
     inputs.add_argument(
         "--source-manifest",
-        help="JSON mapping kernel IDs to CUDA paths, used to avoid compiling harness files",
     )
     parser.add_argument(
         "--source-root",
-        help="root for paths in --source-manifest (default: manifest parent)",
     )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--clang", default="clang++")
     parser.add_argument("--cuda-path")
-    parser.add_argument("--gpu-arch", default="sm_75")
-    parser.add_argument("--min-frequency", type=int, default=1)
-    parser.add_argument("--max-vocabulary", type=int)
-    parser.add_argument("--verbose", action="store_true")
-    parser.add_argument(
-        "--keep-going",
-        action="store_true",
-        help="record compilation failures and continue processing other kernels",
-    )
     return parser.parse_args()
 
 
@@ -51,15 +35,9 @@ def main() -> None:
 
     if args.source_manifest:
         manifest = json.loads(Path(args.source_manifest).read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict) or not manifest:
-            raise SystemExit("source manifest must be a nonempty kernel-to-path mapping")
         source_items = []
         for kernel_id, relative in sorted(manifest.items()):
-            if not isinstance(kernel_id, str) or not kernel_id or not isinstance(relative, str):
-                raise SystemExit("source manifest keys and paths must be nonempty strings")
             source = (source_root / relative).resolve()
-            if not source.is_relative_to(source_root) or not source.is_file():
-                raise SystemExit(f"invalid source manifest path for {kernel_id}: {relative}")
             source_items.append((kernel_id, source))
     else:
         sources = sorted(source_root.rglob("*.cu"))
@@ -67,51 +45,32 @@ def main() -> None:
             (source.relative_to(source_root).with_suffix("").as_posix(), source)
             for source in sources
         ]
-    if not source_items:
-        raise SystemExit(f"no .cu files found under {source_root}")
-    if args.verbose:
-        print(f"[frontend:discover] found {len(source_items)} CUDA files under {source_root}")
-        print(f"[frontend:config] GPU architecture: {args.gpu_arch}")
-        print(f"[frontend:config] LLVM output directory: {ir_root}")
+    
+    print(f"we found {len(source_items)} cuda files, source {source_root}")
 
     compiler = LLVMCompiler(
         clang=args.clang,
         cuda_path=args.cuda_path,
-        gpu_arch=args.gpu_arch,
-        verbose=args.verbose,
+        gpu_arch="sm_75",
     )
     tokenizer = LLVMTokenizer()
-    documents: dict[str, list[str]] = {}
-    failures: dict[str, str] = {}
+    documents = {}
+    failures = {}
     for kernel_id, source in source_items:
         ir_path = ir_root / f"{kernel_id}.ll"
         try:
-            if args.verbose:
-                print(f"[frontend:compile] {kernel_id}: {source}")
             compiler.compile(source, ir_path)
             documents[kernel_id] = tokenizer.tokenize_file(ir_path)
-            if args.verbose:
-                print(
-                    f"[frontend:tokenize] {kernel_id}: "
-                    f"{len(documents[kernel_id])} tokens"
-                )
         except (OSError, RuntimeError) as exc:
-            if args.verbose:
-                print(f"[frontend:failure] {kernel_id}: {exc}")
-            if not args.keep_going:
-                raise
+            print(f"ERRRRORRR {kernel_id}: {exc}")
             failures[kernel_id] = str(exc)
 
-    if not documents:
-        raise SystemExit("no CUDA source was successfully compiled")
     vocabulary = Vocabulary.build(
         documents.values(),
-        min_frequency=args.min_frequency,
-        max_size=args.max_vocabulary,
+        min_frequency=1,
     )
     vocabulary.save(output_root / "vocabulary.json")
-    if args.verbose:
-        print(f"[frontend:vocabulary] {len(vocabulary.token_to_id)} entries")
+    print(f"vOcab length {len(vocabulary.token_to_id)}")
     token_ids = {
         kernel_id: list(vocabulary.encode(tokens))
         for kernel_id, tokens in documents.items()
@@ -122,22 +81,9 @@ def main() -> None:
     with (output_root / "fasttext_corpus.txt").open("w", encoding="utf-8") as corpus:
         for tokens in documents.values():
             corpus.write(" ".join(tokens) + "\n")
-    (output_root / "compile_failures.json").write_text(
-        json.dumps(failures, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    if args.verbose:
-        print(f"[frontend:output] {output_root / 'vocabulary.json'}")
-        print(f"[frontend:output] {output_root / 'token_ids.json'}")
-        print(f"[frontend:output] {output_root / 'fasttext_corpus.txt'}")
+    
     print(
-        json.dumps(
-            {
-                "compiled": len(documents),
-                "failed": len(failures),
-                "vocabulary_size": len(vocabulary.token_to_id),
-            },
-            indent=2,
-        )
+        len(documents), len(failures), len(vocabulary.token_to_id),
     )
 
 

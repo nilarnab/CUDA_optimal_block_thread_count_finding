@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""Train the frozen skip-gram frontend and export its PyTorch matrix."""
-
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 
@@ -23,22 +18,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    try:
-        import fasttext
-        import torch
-    except ImportError as exc:
-        raise SystemExit("install the fasttext optional dependencies first") from exc
+    import fasttext
+    import torch
 
     from encoders.fasttext_encoder import embedding_matrix_from_fasttext
     from frontend.tokenizer import Vocabulary
 
-    if args.verbose:
-        print(f"[fasttext:input] corpus: {args.corpus}")
-        print(f"[fasttext:input] vocabulary: {args.vocabulary}")
-        print(
-            f"[fasttext:config] skipgram dimensions={args.dimensions} "
-            f"epochs={args.epochs} threads={args.threads}"
-        )
 
     model = fasttext.train_unsupervised(
         args.corpus,
@@ -55,8 +40,8 @@ def main() -> None:
     matrix_path.parent.mkdir(parents=True, exist_ok=True)
     model.save_model(str(model_path))
     vocabulary = Vocabulary.load(args.vocabulary)
-    if args.verbose:
-        print(f"[fasttext:matrix] exporting {len(vocabulary.token_to_id)} token vectors")
+
+    
     matrix = embedding_matrix_from_fasttext(model_path, vocabulary.token_to_id)
     torch.save(matrix, matrix_path)
     print(f"saved FastText model to {model_path}")
