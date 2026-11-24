@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Sweep fixed CUDA blocks and compare with a toolcall benchmark binary."""
-
 import argparse
 from collections import defaultdict
 import csv
@@ -21,7 +18,7 @@ from frontend.tokenizer import LLVMTokenizer
 from launch.configuration_catalog import ConfigurationCatalog
 
 
-SOFTMAX_SIZES = [(150051, 1500), (180051, 1500), (150051, 2000), (200051, 2000)]
+DEFAULT_SIZES = [(150051, 1500), (180051, 1500), (150051, 2000), (200051, 2000)]
 DEFAULT_BLOCKS = [config.x for config in ConfigurationCatalog.lscat()]
 WARP_THREADS = 32
 NEARBY_BLOCK_RADIUS = 128
@@ -195,7 +192,7 @@ def main():
         parser.error("--kernel must use letters, digits, underscores or hyphens")
     if args.size is None and args.kernel != "softmax":
         parser.error("--size is required for kernels other than softmax")
-    args.size = list(dict.fromkeys(tuple(size) for size in (args.size or SOFTMAX_SIZES)))
+    args.size = list(dict.fromkeys(tuple(size) for size in (args.size or DEFAULT_SIZES)))
     args.model_bin = (args.model_bin or Path("build") / f"{args.kernel}_aot").resolve()
     args.fixed_bin = (args.fixed_bin or Path("build") / f"{args.kernel}_fixed").resolve()
     args.csv = args.csv or (
