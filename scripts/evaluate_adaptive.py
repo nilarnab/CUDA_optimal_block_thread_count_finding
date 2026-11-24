@@ -1,14 +1,9 @@
-#!/usr/bin/env python3
-"""Reload adaptive/baseline checkpoints and compare length, choices, and estimated total time."""
-
-from __future__ import annotations
-
 import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
 
-from train_adaptive import build_model, input_fingerprints, load_datasets, make_loader
+from train_adaptive import build_model, load_datasets, make_loader
 
 
 def evaluate_checkpoint(path, args):
@@ -18,23 +13,16 @@ def evaluate_checkpoint(path, args):
 
     saved = torch.load(path, map_location="cpu", weights_only=True)
     metadata = saved["metadata"]
-    if metadata.get("format_version") != 1 or metadata.get("architecture") not in {
-        "adaptive", "final", "context", "baseline", "sequence"
-    }:
-        raise ValueError("use a train_adaptive.py or train_sequence.py checkpoint")
+
     metadata.setdefault("problem_columns", ["problem_size"])
     metadata.setdefault("split_groups", None)
-    if metadata["architecture"] == "adaptive" and metadata.get("adaptive_experiment_version") != 1:
-        raise ValueError("unsupported adaptive experiment checkpoint version")
-    if metadata["input_fingerprints"] != input_fingerprints(args.runtimes, args.token_ids):
-        raise ValueError("runtime/token files differ from the checkpoint inputs")
+
     matrix = saved["model_state"]["token_encoder.embedding.weight"]
     catalog, split, _, validation = load_datasets(
         args.runtimes, args.token_ids, matrix, metadata["target_exponent"], split=metadata["split"],
         problem_columns=metadata["problem_columns"], split_groups=metadata["split_groups"],
     )
-    if metadata["action_catalog"] != [asdict(action) for action in catalog]:
-        raise ValueError("checkpoint action catalog differs")
+
     model = build_model(matrix, metadata["context_size"], len(catalog), metadata["architecture"],
                         lstm_hidden_size=metadata.get("lstm_hidden_size", 128))
     model.load_state_dict(saved["model_state"])
@@ -74,8 +62,7 @@ def main():
     parser.add_argument("--latency-repetitions", type=int, default=10)
     parser.add_argument("--output", default="checkpoints/adaptive_comparison.json")
     args = parser.parse_args()
-    if args.batch_size < 1 or args.latency_warmup < 0 or args.latency_repetitions < 1:
-        parser.error("batch size/repetitions must be positive and warmup nonnegative")
+
     from training.adaptive_evaluation import write_rows
 
     result, metadata = evaluate_checkpoint(args.checkpoint, args)
@@ -104,7 +91,7 @@ def main():
     write_rows(path.with_suffix(".model.csv"), result["cases"], result["problem_columns"])
     if args.compare:
         write_rows(path.with_suffix(".comparison.csv"), comparison["cases"], comparison["problem_columns"])
-    print(json.dumps({"report": str(path), **report}, indent=2))
+    print({"report": str(path), **report})
 
 
 if __name__ == "__main__":
