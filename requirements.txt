@@ -3,7 +3,6 @@ certifi==2026.10.23
 charset-normalizer==3.5.2
 click==8.1.8
 contourpy==1.3.0
-cuda-launch-selector==0.1.0
 cycler==0.12.1
 eval_type_backport==0.4.0
 fasttext==0.9.3
