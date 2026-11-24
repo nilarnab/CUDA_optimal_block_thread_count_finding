@@ -1,53 +1,24 @@
-#include <cuda_runtime.h>
+#pragma once
+
+#ifndef __CUDA_ARCH__
+#include "launch.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
-#include <stdexcept>
 #include <vector>
 
-__global__ void softmax_kernel(const float* input, std::size_t vectors,
-                               std::size_t width, float* output) {
-    const auto vector = std::size_t(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (vector >= vectors) return;
-
-    const float* logits = input + vector * width;
-    float* probabilities = output + vector * width;
-    float peak = logits[0];
-    for (std::size_t i = 1; i < width; ++i) {
-        if (logits[i] > peak) peak = logits[i];
-    }
-
-    double total = 0.0;
-    for (std::size_t i = 0; i < width; ++i) {
-        const float value = expf(logits[i] - peak);
-        probabilities[i] = value;
-        total += value;
-    }
-    const auto inverse_total = static_cast<float>(1.0 / total);
-    for (std::size_t i = 0; i < width; ++i) {
-        probabilities[i] *= inverse_total;
-    }
-}
-
-#ifndef __CUDA_ARCH__
-#include "runtime_benchmark.hpp"
-#ifndef RUNTIME_LAUNCH_FIXED
-#include "toolcall.hpp"
-#endif
+namespace softmax_launch {
 
 using runtime_benchmark::check;
 using runtime_benchmark::parse_size;
 
-int main(int argc, char** argv) try {
-#ifdef RUNTIME_LAUNCH_FIXED
-    if (argc != 4) {
-        std::fprintf(stderr, "Usage: %s M N FIXED_BLOCK\n", argv[0]);
-#else
-    if (argc != 3) {
-        std::fprintf(stderr, "Usage: %s M N\n", argv[0]);
-#endif
+template <bool Fixed, bool Timed = true, class Launch>
+int benchmark(int argc, char** argv, Launch launch_kernel) try {
+    if (argc != (Fixed ? 4 : 3)) {
+        std::fprintf(stderr, "Usage: %s M N%s\n",
+                     argv[0], Fixed ? " FIXED_BLOCK" : "");
         return 2;
     }
     const auto vectors = parse_size(argv[1]);
@@ -59,14 +30,14 @@ int main(int argc, char** argv) try {
 
     const auto elements = vectors * width;
     const auto bytes = elements * sizeof(float);
-#ifdef RUNTIME_LAUNCH_FIXED
-    const auto fixed = runtime_benchmark::fixed_configuration(softmax_kernel, vectors, parse_size(argv[3]));
-    const auto select = [fixed] { return fixed; };
-#else
     const auto select = [&] {
-        return toolcall::model_output(softmax_kernel, {vectors, width, 1, vectors});
-    };
-#endif
+        if constexpr (Fixed) {
+            const auto fixed = select_fixed(vectors, parse_size(argv[3]));
+            return [fixed] { return fixed; };
+        } else {
+            return [&] { return select_model(vectors, width); };
+        }
+    }();
     const auto initial = select();
 
     std::vector<float> input(elements), output(elements);
@@ -82,15 +53,14 @@ int main(int argc, char** argv) try {
     check(cudaMemcpy(device_input, input.data(), bytes, cudaMemcpyHostToDevice));
     check(cudaMemset(device_output, 0, bytes));
 
-    const auto launch = [&](runtime_benchmark::Configuration configuration) {
-        const auto [grid, block] = configuration;
-        softmax_kernel<<<grid, block>>>(device_input, vectors, width, device_output);
-        check(cudaGetLastError());
+    const auto launch = [&](Configuration configuration) {
+        launch_kernel(configuration, device_input, vectors, width, device_output);
     };
     launch(initial);
-#ifdef RUNTIME_LAUNCH_BENCHMARK
-    const auto timings = runtime_benchmark::measure(select, launch);
-#endif
+    runtime_benchmark::Timings timings{};
+    if constexpr (Timed) {
+        timings = runtime_benchmark::measure(select, launch);
+    }
     check(cudaMemcpy(output.data(), device_output, bytes, cudaMemcpyDeviceToHost));
     check(cudaFree(device_input));
     check(cudaFree(device_output));
@@ -114,22 +84,19 @@ int main(int argc, char** argv) try {
     }
 
     const auto [grid, block] = initial;
-#ifdef RUNTIME_LAUNCH_BENCHMARK
-#ifdef RUNTIME_LAUNCH_FIXED
-    constexpr auto mode = "fixed";
-#else
-    constexpr auto mode = "model";
-#endif
-    std::printf("%s trials=%d ", mode, runtime_benchmark::trials);
-#endif
+    if constexpr (Timed) {
+        std::printf("%s trials=%d ", Fixed ? "fixed" : "model", runtime_benchmark::trials);
+    }
     std::printf("M=%zu N=%zu elements=%zu grid=%u block=%u verified\n",
                 vectors, width, elements, grid, block);
-#ifdef RUNTIME_LAUNCH_BENCHMARK
-    runtime_benchmark::print_timings(timings);
-#endif
+    if constexpr (Timed) {
+        runtime_benchmark::print_timings(timings);
+    }
     return 0;
 } catch (const std::exception& error) {
     std::fprintf(stderr, "%s\n", error.what());
     return 1;
 }
+
+}  // namespace softmax_launch
 #endif

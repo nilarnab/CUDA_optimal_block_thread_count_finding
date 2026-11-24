@@ -1,79 +1,23 @@
-#include <cuda_runtime.h>
-
-namespace {
-constexpr int tile_width = 32;
-constexpr int warp_threads = 32;
-static_assert(warp_threads % tile_width == 0);
-}
-
-// Adapted from LS-CAT 6580/8. Threads cover tile_width columns and blockDim.y rows.
-__global__ __launch_bounds__(1024) void matrixMultiplyAndRelu(
-    const float* weights, const float* activations, float* output, const float* bias,
-    float* preactivation,
-    int rows, int columns, int inner) {
-    extern __shared__ float shared[];
-    const int threads = tile_width * blockDim.y;
-    float* weight_tile = shared;
-    float* activation_tile = shared + threads;
-    const int tx = threadIdx.x, ty = threadIdx.y;
-    const int tile_index = ty * tile_width + tx;
-    const int row = blockIdx.y * blockDim.y + ty;
-    const int column_start = blockIdx.x * tile_width;
-    const int col = column_start + tx;
-    const int tiles = 1 + (inner - 1) / tile_width;
-    float value = 0.0f;
-
-    for (int tile = 0; tile < tiles; ++tile) {
-        const int k_start = tile * tile_width;
-        const int weight_col = k_start + tx;
-        weight_tile[tile_index] = row < rows && weight_col < inner
-            ? weights[row * inner + weight_col] : 0.0f;
-
-        for (int index = tile_index; index < tile_width * tile_width; index += threads) {
-            const int activation_row = k_start + index / tile_width;
-            const int activation_col = column_start + index % tile_width;
-            activation_tile[index] = activation_row < inner && activation_col < columns
-                ? activations[activation_row * columns + activation_col] : 0.0f;
-        }
-        __syncthreads();
-        // Partially unroll the 32-step reduction to limit the generated code size.
-        #pragma unroll 16
-        for (int k = 0; k < tile_width; ++k) {
-            value += weight_tile[ty * tile_width + k] * activation_tile[k * tile_width + tx];
-        }
-        __syncthreads();
-    }
-
-    if (row < rows && col < columns) {
-        const int index = row * columns + col;
-        const float biased = value + bias[row];
-        preactivation[index] = biased;
-        output[index] = fmaxf(biased, 0.0f);
-    }
-}
+#pragma once
 
 #ifndef __CUDA_ARCH__
+#include "launch.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <vector>
 
-#include "runtime_benchmark.hpp"
-#ifndef RUNTIME_LAUNCH_FIXED
-#include "toolcall.hpp"
-#endif
+namespace matrix_multiply_and_relu_launch {
 
 using runtime_benchmark::check;
 using runtime_benchmark::parse_size;
 
-int main(int argc, char** argv) try {
-#ifdef RUNTIME_LAUNCH_FIXED
-    if (argc != 5) {
-        std::fprintf(stderr, "Usage: %s M N K FIXED_BLOCK\n", argv[0]);
-#else
-    if (argc != 4) {
-        std::fprintf(stderr, "Usage: %s M N K\n", argv[0]);
-#endif
+template <bool Fixed, class Launch>
+int benchmark(int argc, char** argv, Launch launch_kernel) try {
+    if (argc != (Fixed ? 5 : 4)) {
+        std::fprintf(stderr, "Usage: %s M N K%s\n",
+                     argv[0], Fixed ? " FIXED_BLOCK" : "");
         return 2;
     }
 
@@ -100,19 +44,20 @@ int main(int argc, char** argv) try {
     }
 
     const auto work_items = rows * columns;
-#ifdef RUNTIME_LAUNCH_FIXED
-    constexpr auto mode = "fixed";
-    const auto requested = parse_size(argv[4]);
-    if (!requested || requested % warp_threads) {
+    const auto requested = Fixed ? parse_size(argv[4]) : 0;
+    if (Fixed && (!requested || requested % warp_threads)) {
         std::fprintf(stderr, "FIXED_BLOCK must be a positive multiple of 32\n");
         return 2;
     }
-    const auto fixed = runtime_benchmark::fixed_configuration(matrixMultiplyAndRelu, work_items, requested).second;
-    const auto select = [fixed] { return fixed; };
-#else
-    constexpr auto mode = "model";
-    const auto select = [&] { return toolcall::model_output(matrixMultiplyAndRelu, {rows, columns, inner, work_items}).second; };
-#endif
+    constexpr auto mode = Fixed ? "fixed" : "model";
+    const auto select = [&] {
+        if constexpr (Fixed) {
+            const auto fixed = select_fixed(work_items, requested);
+            return [fixed] { return fixed; };
+        } else {
+            return [&] { return select_model(rows, columns, inner, work_items); };
+        }
+    }();
     const auto initial = select();
 
     std::vector<float> weights(rows * inner), activations(inner * columns), bias(rows), output(work_items);
@@ -145,18 +90,10 @@ int main(int argc, char** argv) try {
     check(cudaMalloc(&device_preactivation, output_bytes));
     check(cudaMemset(device_preactivation, 0xff, output_bytes));
 
-    const auto grid_y = [rows](unsigned threads) {
-        return static_cast<unsigned>(1 + (rows - 1) / (threads / tile_width));
-    };
     const auto launch = [&](unsigned threads) {
-        const dim3 grid(grid_x, grid_y(threads));
-        const dim3 block(tile_width, threads / tile_width);
-        const auto shared_bytes = (threads + tile_width * tile_width) * sizeof(float);
-        matrixMultiplyAndRelu<<<grid, block, shared_bytes>>>(
-            device_weights, device_activations, device_output, device_bias,
-            device_preactivation,
-            static_cast<int>(rows), static_cast<int>(columns), static_cast<int>(inner));
-        check(cudaGetLastError());
+        launch_kernel(threads, grid_x, device_weights, device_activations, device_output, device_bias,
+                      device_preactivation, static_cast<int>(rows),
+                      static_cast<int>(columns), static_cast<int>(inner));
     };
     launch(initial);
     const auto timings = runtime_benchmark::measure(select, launch);
@@ -195,11 +132,13 @@ int main(int argc, char** argv) try {
     }
 
     std::printf("%s trials=%d M=%zu N=%zu K=%zu grid=%u grid_y=%u block=%u checked=%zu verified\n",
-                mode, runtime_benchmark::trials, rows, columns, inner, grid_x, grid_y(initial), initial, samples);
+                mode, runtime_benchmark::trials, rows, columns, inner, grid_x, grid_rows(rows, initial), initial, samples);
     runtime_benchmark::print_timings(timings);
     return 0;
 } catch (const std::exception& error) {
     std::fprintf(stderr, "%s\n", error.what());
     return 1;
 }
+
+}  // namespace matrix_multiply_and_relu_launch
 #endif

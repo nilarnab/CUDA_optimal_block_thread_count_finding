@@ -1,16 +1,17 @@
 # Build and run a CUDA kernel with `toolcall`
 
 `toolcall` encodes the kernel at build time and links a block-size selector
-into the CUDA program. At runtime, the default native C++ scorer runs on the
-CPU. It selects a block size, calculates the grid, and returns both to the
-host launcher. The GPU runs the user’s CUDA kernel.
+into the CUDA program. By default, it compiles the CPU scorer with PyTorch
+AOTInductor. The scorer selects a block size, and the host launcher uses
+the returned grid and block dimensions to run the CUDA kernel on the GPU.
+Pass `--native` at build time to use the C++ CPU scorer.
 
 ## Build and run softmax
 
 From the repository root on Linux, activate the project’s Python environment
-with PyTorch installed. You also need a host C++ compiler, Clang with CUDA
-support, NVCC, and the original vocabulary that matches the adaptive
-checkpoint.
+with PyTorch installed. The default build needs PyTorch with AOTInductor
+packaging support. You also need a host C++ compiler, Clang with CUDA support,
+NVCC, and the original vocabulary that matches the adaptive checkpoint.
 
 The defaults use the CUDA2 target (`sm_75`),
 `checkpoints/lscat_adaptive_h1_lambda1e-8_no-kl_ep120.best.pt`, and
@@ -22,10 +23,12 @@ This example takes `M` vectors of `N` logits and computes a separate
 softmax for each vector. It subtracts the vector maximum before exponentiation
 and checks the probabilities against a CPU reference. One GPU thread processes
 one vector, so the scorer receives `(M, N)` and the grid covers `M` work items.
-[Example source](toolcall_softmax.cu)
+[Standalone entry point](softmax/toolcall_softmax.cu)
 
 ```bash
-./toolcall examples/runtime_launch/toolcall_softmax.cu -o build/softmax
+softmax=examples/runtime_launch/softmax
+./toolcall "$softmax/softmax_model.cu" \
+  --link-source "$softmax/toolcall_softmax.cu" -o build/softmax
 ./build/softmax 257 67
 ```
 
@@ -44,20 +47,24 @@ Pass the workload dimensions using the same meanings and order as the
 checkpoint’s training data. The API accepts `{m, n, k, work_items}`. A
 two-input checkpoint reads `m` and `n`. A three-input checkpoint also reads
 `k`. Pass the actual number of elements to cover as `work_items`.
-The current interface supports one CUDA kernel per input file, a host
-`main()`, and a one-dimensional launch with one work item per thread.
+The current interface encodes one CUDA kernel from the primary source file.
+The program needs a host `main()` and can use the returned configuration for
+a one-dimensional launch with one work item per thread.
 
-Build any such file with `./toolcall my_kernel.cu -o my_program`. Use your
-checkout’s defaults or pass the same options as above. Your host `main()`
-defines the arguments to the resulting executable.
+Build a single-file program with `./toolcall my_kernel.cu -o my_program`.
+If your host `main()` lives in a separate file, pass it with
+`--link-source main.cu`. `toolcall` links that file into the program and
+uses only the primary source for LLVM IR and model input. Your host
+`main()` defines the executable's arguments.
 
 ## How the build and launch fit together
 
 1. **Build time.** Clang emits device LLVM IR. Python tokenizes the IR and uses
    the checkpoint’s FastText embeddings, LSTM, and learned gate to select
-   which hidden states to retain. `toolcall` embeds those states and their
-   gate values in the executable. It compiles the context encoder, dense
-   scorer, attention, and their trained weights into `libtoolcall_model.so`.
+   which hidden states to retain. `toolcall` embeds every retained state and
+   its gate value in the executable. By default, it compiles the context
+   encoder, dense scorer, attention, and their trained weights into
+   `scorer.pt2` and builds `libtoolcall_model.so` to load it.
 2. **Runtime.** `model_output()` gets the active CUDA device and kernel launch
    limits. The CPU scorer combines the checkpoint’s workload dimensions with
    the embedded states and picks the highest-scoring legal block. For
@@ -73,13 +80,35 @@ build/
 └── .toolcall/
     └── kernel-…/
         ├── libtoolcall_model.so
+        ├── scorer.pt2
         └── build.json
 ```
 
 `build.json` records the checkpoint, GPU target, scorer backend, workload
-columns, and `retained_states` for troubleshooting and benchmarking. The native
-runtime uses the executable and library with the usual CUDA and system
-libraries. The generated LLVM IR and headers are build artifacts.
+columns, and `retained_states`, the count selected by the checkpoint's
+learned gate. Keep `scorer.pt2` beside `libtoolcall_model.so` and keep the
+build environment’s LibTorch libraries available. The first prediction loads
+the package. The generated LLVM IR and headers are build artifacts.
+
+## Benchmark source layout
+
+Each kernel has its own folder and separate model and fixed executables.
+
+| Kernel | CUDA implementation | Model launcher | Model benchmark | Fixed launcher | Fixed benchmark |
+| --- | --- | --- | --- | --- | --- |
+| Softmax | [Kernel](softmax/kernel.cuh) | [Launcher](softmax/softmax_model.cu) | [Benchmark](softmax/bench_softmax_model.cu) | [Launcher](softmax/softmax_fixed.cu) | [Benchmark](softmax/bench_softmax_fixed.cu) |
+| ComputeOrientations | [Kernel](compute_orientations/kernel.cuh) | [Launcher](compute_orientations/compute_orientations_model.cu) | [Benchmark](compute_orientations/bench_compute_orientations_model.cu) | [Launcher](compute_orientations/compute_orientations_fixed.cu) | [Benchmark](compute_orientations/bench_compute_orientations_fixed.cu) |
+| Matrix multiply and ReLU | [Kernel](matrix_multiply_and_relu/kernel.cuh) | [Launcher](matrix_multiply_and_relu/matrix_multiply_and_relu_model.cu) | [Benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_model.cu) | [Launcher](matrix_multiply_and_relu/matrix_multiply_and_relu_fixed.cu) | [Benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_fixed.cu) |
+
+The model launcher calls `toolcall::model_output()` and launches the kernel
+with the selected configuration. The fixed launcher validates and uses
+`FIXED_BLOCK`, the last argument to the fixed benchmark. Each folder's
+`launch.hpp` declares these functions and its `benchmark.hpp` shares input
+setup, timing, and output checks between the two benchmarks.
+
+Build the model launcher with `toolcall` and pass its benchmark with
+`--link-source`. Build the fixed launcher and its benchmark together with
+`nvcc`.
 
 ## Benchmark against a fixed block
 
@@ -89,9 +118,11 @@ argument.
 
 ```bash
 mkdir -p build
+softmax=examples/runtime_launch/softmax
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  examples/runtime_launch/bench_softmax_fixed.cu -o build/softmax_fixed
-./toolcall examples/runtime_launch/bench_softmax.cu -o build/softmax_model
+  "$softmax/softmax_fixed.cu" "$softmax/bench_softmax_fixed.cu" -o build/softmax_fixed
+./toolcall "$softmax/softmax_model.cu" \
+  --link-source "$softmax/bench_softmax_model.cu" -o build/softmax_model
 
 ./build/softmax_fixed 2051 67 256
 ./build/softmax_model 2051 67
@@ -147,7 +178,7 @@ to change the upload destination.
 
 ### Matrix multiply and ReLU
 
-The [ReLU benchmark](bench_matrix_multiply_and_relu.cu) adapts the
+The [ReLU benchmark](matrix_multiply_and_relu/bench_matrix_multiply_and_relu_model.cu) adapts the
 [LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/6580/8/matrixMultiplyAndRelu.cu)
 to compute a matrix product with row bias and ReLU. It accepts `M N K`
 and uses 32-column tiles. Its two outputs are the preactivation and
@@ -155,11 +186,12 @@ ReLU result. The largest example uses about 576 MiB of GPU buffers.
 
 ```bash
 mkdir -p build
+relu=examples/runtime_launch/matrix_multiply_and_relu
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  examples/runtime_launch/bench_matrix_multiply_and_relu_fixed.cu \
-  -o build/matrix_multiply_and_relu_fixed
-./toolcall --aot examples/runtime_launch/bench_matrix_multiply_and_relu.cu \
-  -o build/matrix_multiply_and_relu_aot
+  "$relu/matrix_multiply_and_relu_fixed.cu" \
+  "$relu/bench_matrix_multiply_and_relu_fixed.cu" -o build/matrix_multiply_and_relu_fixed
+./toolcall "$relu/matrix_multiply_and_relu_model.cu" \
+  --link-source "$relu/bench_matrix_multiply_and_relu_model.cu" -o build/matrix_multiply_and_relu_aot
 
 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
 python scripts/collect_launch_benchmarks.py --kernel matrix_multiply_and_relu \
@@ -172,7 +204,7 @@ python scripts/collect_launch_benchmarks.py --kernel matrix_multiply_and_relu \
 
 ### ComputeOrientations
 
-The [orientation benchmark](bench_compute_orientations.cu) adapts the
+The [orientation benchmark](compute_orientations/bench_compute_orientations_model.cu) adapts the
 [LS-CAT kernel](https://github.com/NTNU-HPC-Lab/LS-CAT/blob/83a50786eee2de633be477819c044d2c9a1ad076/data/kernels/10319/29/ComputeOrientations.cu)
 to compute 32-bin orientation histograms from a 15 × 15 image patch per
 keypoint. Each warp owns one keypoint and its shared memory. The arguments
@@ -182,9 +214,12 @@ keypoint, including a partial last block when needed.
 
 ```bash
 mkdir -p build
+orient=examples/runtime_launch/compute_orientations
 nvcc -std=c++17 -O3 -arch=sm_75 \
-  examples/runtime_launch/bench_compute_orientations_fixed.cu -o build/compute_orientations_fixed
-./toolcall --aot examples/runtime_launch/bench_compute_orientations.cu -o build/compute_orientations_aot
+  "$orient/compute_orientations_fixed.cu" \
+  "$orient/bench_compute_orientations_fixed.cu" -o build/compute_orientations_fixed
+./toolcall "$orient/compute_orientations_model.cu" \
+  --link-source "$orient/bench_compute_orientations_model.cu" -o build/compute_orientations_aot
 
 python scripts/collect_launch_benchmarks.py --kernel compute_orientations \
   --model-bin build/compute_orientations_aot --fixed-bin build/compute_orientations_fixed \
@@ -197,40 +232,21 @@ The explicit block list keeps the sweep within the kernel's launch limit.
 A 576-thread block uses 47.25 KiB of shared memory. The largest input
 uses 112 MiB of GPU buffers. Each run checks both angles against a CPU
 reference for up to 64 keypoints and scans every output for invalid angles.
-Build with the default learned gates to measure natural pruning in the CSV.
 
-### Test a smaller kernel representation with the same checkpoint
+## Use the native C++ scorer
 
-```bash
-./toolcall --retain-fraction 0.75 examples/runtime_launch/bench_softmax.cu \
-  -o build/softmax_model_keep75
-```
-
-The build applies the checkpoint's learned gate first. The optional cap
-then keeps the highest-gated rows up to 75% of that count, rounded down,
-with the final LSTM state always retained and counted toward the limit.
-The selected states stay in their original order. The cap works with
-both the native scorer and `--aot`.
-
-The printed artifact directory contains `build.json` with
-`learned_retained_states` before the cap and `retained_states` after it.
-The collector uses the latter as the number of rows scored at runtime.
-Compare capped and uncapped binaries built with the same checkpoint and
-backend using the same inputs.
-
-## Optional PyTorch-compiled scorer
-
-Add `--aot` to compile the existing Python scorer for the CPU with
-AOTInductor. The CUDA program still calls the same `model_output()` function.
+Use `--native` to compile the C++ scorer and checkpoint weights directly into
+`libtoolcall_model.so`. The native executable needs the model library and the
+usual CUDA and system libraries at runtime. Both backends use the same
+`model_output()` API and the states retained by the checkpoint's learned gate.
 
 ```bash
-./toolcall --aot examples/runtime_launch/bench_softmax.cu -o build/softmax_aot
-
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ./build/softmax_aot 2051 67
+softmax=examples/runtime_launch/softmax
+./toolcall --native "$softmax/softmax_model.cu" \
+  --link-source "$softmax/bench_softmax_model.cu" -o build/softmax_native
+./build/softmax_native 2051 67
 ```
 
-Keep `scorer.pt2` beside `libtoolcall_model.so` in the printed artifact
-directory and keep the build environment’s LibTorch libraries available.
-The first prediction loads the package. Compare this run with the native
-model benchmark at the same size. The benchmark warms up both scorers before
-recording selection latency.
+Compare with the default AOT build at the same size. The benchmark warms
+up the scorer before recording selection latency. Existing commands that
+pass `--aot` explicitly still select AOT.
