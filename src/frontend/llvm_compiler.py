@@ -1,5 +1,3 @@
-"""Compile CUDA source into textual LLVM IR with Clang."""
-
 from __future__ import annotations
 
 import os
@@ -19,9 +17,7 @@ class LLVMCompiler:
     extra_args: Sequence[str] = field(default_factory=tuple)
     verbose: bool = False
 
-    def _cuda_root(self) -> Path | None:
-        """Resolve an explicit or Conda-provided CUDA toolkit root."""
-
+    def _cuda_root(self):
         if self.cuda_path:
             return Path(self.cuda_path)
         conda_prefix = os.environ.get("CONDA_PREFIX")
@@ -33,19 +29,13 @@ class LLVMCompiler:
         return None
 
     @staticmethod
-    def _target_include(cuda_root: Path) -> Path | None:
-        """Find headers in NVIDIA Conda's targets/<triplet>/include layout."""
-
+    def _target_include(cuda_root):
         candidates = sorted((cuda_root / "targets").glob("*/include"))
         return next((path for path in candidates if (path / "cuda.h").is_file()), None)
 
-    def compile(self, source: str | Path, output: str | Path) -> Path:
-        """Emit device-side LLVM IR for one CUDA translation unit."""
-
+    def compile(self, source, output):
         source_path = Path(source)
         output_path = Path(output)
-        if not source_path.is_file():
-            raise FileNotFoundError(source_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         command = [
             self.clang,
@@ -72,9 +62,4 @@ class LLVMCompiler:
             print(f"[frontend:clang:stdout]\n{completed.stdout.strip()}")
         if self.verbose and completed.stderr.strip():
             print(f"[frontend:clang:stderr]\n{completed.stderr.strip()}")
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"LLVM compilation failed for {source_path}:\n{completed.stderr.strip()}"
-            )
         return output_path
-

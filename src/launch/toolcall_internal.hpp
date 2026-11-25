@@ -8,7 +8,7 @@ namespace toolcall::detail {
 
 struct Kernel {
     const float* states;
-    const float* gates;  // Raw for AOTInductor, logarithms for the native scorer.
+    const float* gates;
     std::size_t rows;
     std::size_t width;
 };
@@ -21,4 +21,4 @@ struct LaunchLimits {
 std::pair<unsigned, unsigned> choose_launch(
     ProblemSize problem, const Kernel& kernel, LaunchLimits limits);
 
-}  // namespace toolcall::detail
+}

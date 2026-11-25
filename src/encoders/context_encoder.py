@@ -1,16 +1,9 @@
-"""Encode problem dimensions or other structured launch context."""
-
-from __future__ import annotations
-
-try:
-    import torch
-    from torch import nn
-except ImportError as exc:  # pragma: no cover
-    raise ImportError("encoders.context_encoder requires PyTorch") from exc
+import torch
+from torch import nn
 
 
 class ContextEncoder(nn.Module):
-    def __init__(self, input_size: int, output_size: int) -> None:
+    def __init__(self, input_size, output_size):
         super().__init__()
         self._output_size = output_size
         self.network = nn.Sequential(
@@ -20,10 +13,9 @@ class ContextEncoder(nn.Module):
         )
 
     @property
-    def output_size(self) -> int:
+    def output_size(self):
         return self._output_size
 
-    def forward(self, context: torch.Tensor) -> torch.Tensor:
-        # Log scaling keeps large matrix dimensions numerically manageable.
-        return self.network(torch.log1p(context.clamp_min(0)))
+    def forward(self, context):
 
+        return self.network(torch.log1p(context.clamp_min(0)))

@@ -1,13 +1,8 @@
-"""Deterministic tokenizer and vocabulary for textual LLVM IR."""
-
-from __future__ import annotations
-
 import json
 import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 
 
 _TOKEN_PATTERN = re.compile(
@@ -18,15 +13,13 @@ _TOKEN_PATTERN = re.compile(
 
 
 class LLVMTokenizer:
-    """Tokenize LLVM IR while optionally normalizing unstable identifiers."""
-
-    def __init__(self, *, normalize_identifiers: bool = True, normalize_numbers: bool = True):
+    def __init__(self, *, normalize_identifiers=True, normalize_numbers=True):
         self.normalize_identifiers = normalize_identifiers
         self.normalize_numbers = normalize_numbers
 
-    def tokenize(self, text: str) -> list[str]:
+    def tokenize(self, text):
         text = re.sub(r";.*$", "", text, flags=re.MULTILINE)
-        output: list[str] = []
+        output = []
         for token in _TOKEN_PATTERN.findall(text):
             if self.normalize_identifiers and token.startswith("%"):
                 token = "%ID"
@@ -39,7 +32,7 @@ class LLVMTokenizer:
             output.append(token)
         return output
 
-    def tokenize_file(self, path: str | Path) -> list[str]:
+    def tokenize_file(self, path):
         return self.tokenize(Path(path).read_text(encoding="utf-8"))
 
 
@@ -51,13 +44,7 @@ class Vocabulary:
     UNK = "<UNK>"
 
     @classmethod
-    def build(
-        cls,
-        documents: Iterable[Sequence[str]],
-        *,
-        min_frequency: int = 1,
-        max_size: int | None = None,
-    ) -> "Vocabulary":
+    def build(cls, documents, *, min_frequency=1, max_size=None):
         counts = Counter(token for document in documents for token in document)
         candidates = [
             token for token, count in counts.items() if count >= min_frequency
@@ -70,20 +57,19 @@ class Vocabulary:
         return cls(mapping)
 
     @property
-    def padding_id(self) -> int:
+    def padding_id(self):
         return self.token_to_id[self.PAD]
 
-    def encode(self, tokens: Sequence[str]) -> tuple[int, ...]:
+    def encode(self, tokens):
         unknown = self.token_to_id[self.UNK]
         return tuple(self.token_to_id.get(token, unknown) for token in tokens)
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path):
         Path(path).write_text(
             json.dumps(self.token_to_id, indent=2, sort_keys=True), encoding="utf-8"
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "Vocabulary":
+    def load(cls, path):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls({str(token): int(index) for token, index in data.items()})
-

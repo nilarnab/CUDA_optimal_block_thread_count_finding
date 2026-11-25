@@ -1,29 +1,20 @@
-"""Variable-length token sequence encoder with optional attention pooling."""
-
-from __future__ import annotations
-
-try:
-    import torch
-    from torch import nn
-    from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-except ImportError as exc:  # pragma: no cover
-    raise ImportError("encoders.lstm_encoder requires PyTorch") from exc
+import torch
+from torch import nn
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class LSTMEncoder(nn.Module):
     def __init__(
         self,
-        input_size: int,
-        hidden_size: int,
+        input_size,
+        hidden_size,
         *,
-        layers: int = 1,
-        bidirectional: bool = False,
-        attention: bool = False,
-        dropout: float = 0.0,
-    ) -> None:
+        layers=1,
+        bidirectional=False,
+        attention=False,
+        dropout=0.0,
+    ):
         super().__init__()
-        if layers < 1:
-            raise ValueError("layers must be positive")
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -36,10 +27,10 @@ class LSTMEncoder(nn.Module):
         self.attention = nn.Linear(self._output_size, 1) if attention else None
 
     @property
-    def output_size(self) -> int:
+    def output_size(self):
         return self._output_size
 
-    def forward(self, embeddings: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+    def forward(self, embeddings, lengths):
         packed = pack_padded_sequence(
             embeddings,
             lengths.detach().cpu(),
@@ -59,4 +50,3 @@ class LSTMEncoder(nn.Module):
         attention_logits = attention_logits.masked_fill(~mask, float("-inf"))
         weights = torch.softmax(attention_logits, dim=1)
         return torch.sum(output * weights.unsqueeze(-1), dim=1)
-

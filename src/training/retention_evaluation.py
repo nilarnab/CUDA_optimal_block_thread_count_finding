@@ -1,5 +1,3 @@
-"""Evidence for nontrivial learned retention, kept separate from task quality."""
-
 from collections import defaultdict
 from dataclasses import asdict
 import statistics
@@ -23,13 +21,7 @@ def length_evidence(rows):
             1 <= item["learned_h"] <= item["input_token_count"]
             and item["hidden_width"] >= 1
         )
-        if not (context_only or retained_representation):
-            raise ValueError("invalid retained length or hidden width")
-        if kernel in kernels and kernels[kernel] != item:
-            raise ValueError(f"kernel-only representation changed across contexts: {kernel}")
         kernels[kernel] = item
-    if not kernels:
-        raise ValueError("no kernel representations")
     lengths = sorted({row["learned_h"] for row in kernels.values()})
     partial = sum(1 < row["learned_h"] < row["input_token_count"] for row in kernels.values())
     all_full = all(r["learned_h"] == r["input_token_count"] for r in kernels.values())
@@ -44,7 +36,7 @@ def length_evidence(rows):
         "all_single_state": lengths == [1],
         "all_full_length": all_full,
         "partially_compressed_kernel_count": partial,
-        # Exclude both constant-size output and simply retaining every input token.
+
         "nontrivial_variable_length": len(lengths) > 1 and not all_full,
         "equal_input_length_different_h": (
             any(len(set(counts)) > 1 for counts in equal_length_groups) if equal_length_groups else None
@@ -56,8 +48,6 @@ def length_evidence(rows):
 
 
 def persistent_length_evidence(rows, *, through_epoch=None, window=5):
-    if window < 1:
-        raise ValueError("window must be positive")
     by_epoch = defaultdict(list)
     for row in rows:
         epoch = int(row["epoch"])
@@ -77,7 +67,6 @@ def persistent_length_evidence(rows, *, through_epoch=None, window=5):
 
 @torch.no_grad()
 def retention_diagnostics(model, batches, catalog, device, *, loss_kind="bce", epoch=0):
-    """Compare learned retention with only its mandatory final state; no retraining."""
     if not hasattr(model, "gate_network"):
         return None
     model.eval()
@@ -99,8 +88,6 @@ def retention_diagnostics(model, batches, catalog, device, *, loss_kind="bce", e
         selected_logits.append(logits.cpu())
         final_logits.append(last.cpu())
         runtimes_all.append(batch["runtimes"][index:index + 1].cpu())
-    if not rows:
-        raise ValueError("no validation cases")
     runtimes = torch.cat(runtimes_all)
     selected = asdict(runtime_metrics(torch.cat(selected_logits), runtimes))
     final_only = asdict(runtime_metrics(torch.cat(final_logits), runtimes))
@@ -109,18 +96,15 @@ def retention_diagnostics(model, batches, catalog, device, *, loss_kind="bce", e
     task_gain = final_only["task_loss"] - selected["task_loss"]
     regret_gain = final_only["mean_regret"] - selected["mean_regret"]
     fixed = None
-    try:
-        action = catalog.to_id(Configuration(256))
-    except KeyError:
-        pass
-    else:
+    action = next((i for i, config in enumerate(catalog) if config == Configuration(256)), None)
+    if action is not None:
         logits = torch.zeros_like(runtimes)
         logits[:, action] = 1
         fixed = asdict(runtime_metrics(logits, runtimes))
     return {
         "lengths": length_evidence(rows), "selected": selected, "final_state_only": final_only,
         "extra_state_task_gain": task_gain, "extra_state_regret_gain": regret_gain,
-        # Numeric tolerance only, not a statistical significance test.
+
         "extra_states_improve_task_loss": task_gain > 1e-6,
         "extra_states_improve_regret": regret_gain > 1e-6,
         "fixed_256": fixed, "cases": rows,

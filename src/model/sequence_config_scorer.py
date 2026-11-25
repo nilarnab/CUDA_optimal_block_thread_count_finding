@@ -1,7 +1,3 @@
-"""Score every LSTM timestep before reducing the variable-length sequence."""
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import torch
@@ -15,16 +11,14 @@ from model.config_scorer import ConfigurationScorer
 
 @dataclass(frozen=True)
 class KernelSequence:
-    """A padded cache with lengths, supporting the existing latency benchmark."""
-
     states: torch.Tensor
     lengths: torch.Tensor
 
     @property
-    def device(self) -> torch.device:
+    def device(self):
         return self.states.device
 
-    def __getitem__(self, selection: slice) -> KernelSequence:
+    def __getitem__(self, selection):
         lengths = self.lengths[selection]
         return KernelSequence(self.states[selection, : int(lengths.max())], lengths)
 
@@ -32,15 +26,15 @@ class KernelSequence:
 class SequenceConfigurationModel(nn.Module):
     def __init__(
         self,
-        embedding_matrix: torch.Tensor,
-        context_size: int,
-        action_count: int,
+        embedding_matrix,
+        context_size,
+        action_count,
         *,
-        hidden_size: int = 128,
-        context_features: int = 32,
-        hidden_sizes: tuple[int, ...] = (256, 128, 64),
-        dropout: float = 0.1,
-    ) -> None:
+        hidden_size=128,
+        context_features=32,
+        hidden_sizes=(256, 128, 64),
+        dropout=0.1,
+    ):
         super().__init__()
         self.token_encoder = FrozenFastTextEncoder(embedding_matrix)
         self.kernel_encoder = nn.LSTM(
@@ -55,16 +49,7 @@ class SequenceConfigurationModel(nn.Module):
             nn.Linear(features, context_features), nn.Tanh(), nn.Linear(context_features, 1)
         )
 
-    def encode_kernel(
-        self, tokens: torch.Tensor, lengths: torch.Tensor
-    ) -> KernelSequence:
-        """Cache all hidden states and lengths; no context-dependent pooling yet."""
-        if tokens.ndim != 2 or lengths.shape != (tokens.size(0),):
-            raise ValueError("expected tokens [batch, steps] and lengths [batch]")
-        if lengths.dtype != torch.long or bool(
-            ((lengths < 1) | (lengths > tokens.size(1))).any()
-        ):
-            raise ValueError("lengths must be positive int64 values within the token width")
+    def encode_kernel(self, tokens, lengths):
         packed = pack_padded_sequence(
             self.token_encoder(tokens), lengths.detach().cpu(),
             batch_first=True, enforce_sorted=False,
@@ -73,35 +58,25 @@ class SequenceConfigurationModel(nn.Module):
         states, _ = pad_packed_sequence(output, batch_first=True)
         return KernelSequence(states, lengths.to(states.device))
 
-    def score_cached(
-        self,
-        kernel_sequence: KernelSequence,
-        context: torch.Tensor,
-    ) -> torch.Tensor:
+    def score_cached(self, kernel_sequence, context):
         states, lengths = kernel_sequence.states, kernel_sequence.lengths
         context_vector = self.context_encoder(context)
         fused = torch.cat(
             (states, context_vector.unsqueeze(1).expand(-1, states.size(1), -1)), dim=-1
         )
-        # Linear layers share weights across timesteps; only the last width is fixed.
+
         token_logits = self.scorer(fused)
         valid = torch.arange(states.size(1), device=states.device)[None, :] < lengths[:, None]
         weights = self.attention(fused).squeeze(-1).masked_fill(~valid, -torch.inf)
         weights = weights.softmax(dim=1)
         return (token_logits * weights.unsqueeze(-1)).sum(dim=1)
 
-    def forward(
-        self, tokens: torch.Tensor, lengths: torch.Tensor, context: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, tokens, lengths, context):
         return self.score_cached(self.encode_kernel(tokens, lengths), context)
 
 
 class FinalStateConfigurationModel(SequenceConfigurationModel):
-    """Matched sequence scorer that always retains only the final LSTM state."""
-
-    def encode_kernel(
-        self, tokens: torch.Tensor, lengths: torch.Tensor
-    ) -> KernelSequence:
+    def encode_kernel(self, tokens, lengths):
         sequence = super().encode_kernel(tokens, lengths)
         rows = torch.arange(sequence.states.size(0), device=sequence.states.device)
         final_states = sequence.states[rows, sequence.lengths - 1].unsqueeze(1)
