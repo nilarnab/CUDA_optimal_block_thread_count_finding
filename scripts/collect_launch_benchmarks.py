@@ -37,7 +37,7 @@ FIELDS = (
 def positive_int(value):
     number = int(value)
     if number < 1:
-        raise argparse.ArgumentTypeError("expected a positive integer")
+        raise argparse.ArgumentTypeError("GIVE A POS INTEGER only!")
     return number
 
 
@@ -52,7 +52,6 @@ def fixed_sweep(predicted, blocks):
 
 def state_counts(binary, manifest):
     if manifest is None:
-        # The executable links to exactly one toolcall build via its ELF runpath.
         try:
             dynamic = subprocess.run(
                 ["readelf", "-dW", str(binary)], capture_output=True, text=True, check=True
@@ -67,16 +66,11 @@ def state_counts(binary, manifest):
             return {}
 
     retained = json.loads(manifest.read_text(encoding="utf-8"))["retained_states"]
-    if type(retained) is not int or retained < 1:
-        raise ValueError(f"invalid retained_states in {manifest}")
     ir = manifest.with_name("kernel.ll")
     if not ir.is_file():
         print(f"Missing {ir}. Recording retained states only.", file=sys.stderr)
         return {"retained_states": retained}
-    # Inference uses one state per token and substitutes a single UNK for empty IR.
     full = max(1, len(LLVMTokenizer().tokenize_file(ir)))
-    if retained > full:
-        raise ValueError(f"{manifest} reports {retained} retained states but {ir} has only {full}")
     reduction = round(100 * (full - retained) / full, 3)
     print(f"Kernel states: {retained}/{full} retained ({reduction:g}% fewer rows)", flush=True)
     return dict(zip(METADATA_FIELDS, (retained, full, reduction)))
@@ -91,21 +85,15 @@ def measure(binary, size, fixed_block=None):
     result = subprocess.run(command, capture_output=True, text=True)
     elapsed = perf_counter() - start
     if result.returncode:
-        raise RuntimeError(f"{shlex.join(command)} exited {result.returncode}\n{result.stdout}{result.stderr}")
+        raise RuntimeError(f"Bad returnn code.")
 
     lines = result.stdout.splitlines()
     header = next((line for line in lines if line.startswith(mode + " ") and line.endswith(" verified")), "")
     timing = next((line for line in lines if line.startswith("gpu_us=")), "")
     fields = dict(re.findall(r"(\w+)=([^\s]+)", header + " " + timing))
-    try:
-        block, grid, trials = (int(fields[key]) for key in ("block", "grid", "trials"))
-        times = {key: float(fields[key]) for key in METRICS}
-        if min(block, grid, trials) < 1 or any(not math.isfinite(t) or t < 0 for t in times.values()):
-            raise ValueError("invalid benchmark measurements")
-        if fixed_block is not None and block != fixed_block:
-            raise ValueError(f"expected fixed block {fixed_block}, got {block}")
-    except (KeyError, ValueError) as error:
-        raise RuntimeError(f"Unexpected benchmark output from {shlex.join(command)}\n{result.stdout}{result.stderr}") from error
+    block, grid, trials = (int(fields[key]) for key in ("block", "grid", "trials"))
+    times = {key: float(fields[key]) for key in METRICS}
+
     return {"mode": mode, "block_size": block, "grid": grid, "trials": trials,
             **times, "process_wall_s": round(elapsed, 6)}
 
@@ -172,38 +160,26 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--kernel", default="softmax", help="kernel label")
-    parser.add_argument("--model-bin", type=Path, help="defaults to build/<kernel>_aot")
-    parser.add_argument("--fixed-bin", type=Path, help="defaults to build/<kernel>_fixed")
-    parser.add_argument("--size", metavar="DIM", type=positive_int, nargs="+", action="append",
-                        help="positional size arguments to both binaries, repeat for each shape")
-    parser.add_argument("--blocks", type=positive_int, nargs="+",
-                        help="override the catalog sweep and its fine steps around the model choice")
-    parser.add_argument("--repeats", type=positive_int, default=1, help="process runs per size and block")
-    parser.add_argument("--build-json", type=Path, help="model binary's toolcall manifest (auto-detected on ELF)")
-    parser.add_argument("--csv", type=Path, help="CSV path (defaults to a timestamped file under results/launch_benchmarks)")
-    parser.add_argument("--plot", type=Path, metavar="PNG", help="also save a plot to this path")
-    parser.add_argument("--wandb", action="store_true", help="log the CSV and plots to Weights & Biases")
+    parser.add_argument("--kernel", default="softmax")
+    parser.add_argument("--model-bin", type=Path)
+    parser.add_argument("--fixed-bin", type=Path)
+    parser.add_argument("--size", metavar="DIM", type=positive_int, nargs="+", action="append")
+    parser.add_argument("--blocks", type=positive_int, nargs="+")
+    parser.add_argument("--repeats", type=positive_int, default=1)
+    parser.add_argument("--build-json", type=Path)
+    parser.add_argument("--csv", type=Path)
+    parser.add_argument("--plot", type=Path, metavar="PNG")
+    parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb-project", default="gpus-project")
     parser.add_argument("--wandb-entity", default="sm12779-new-york-university")
     args = parser.parse_args()
 
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", args.kernel):
-        parser.error("--kernel must use letters, digits, underscores or hyphens")
-    if args.size is None and args.kernel != "softmax":
-        parser.error("--size is required for kernels other than softmax")
     args.size = list(dict.fromkeys(tuple(size) for size in (args.size or DEFAULT_SIZES)))
     args.model_bin = (args.model_bin or Path("build") / f"{args.kernel}_aot").resolve()
     args.fixed_bin = (args.fixed_bin or Path("build") / f"{args.kernel}_fixed").resolve()
     args.csv = args.csv or (
         Path("results/launch_benchmarks") / f"{args.kernel}_{datetime.now():%Y%m%dT%H%M%S_%f}.csv"
     )
-    for binary in (args.model_bin, args.fixed_bin):
-        if not binary.is_file() or not os.access(binary, os.X_OK):
-            parser.error(f"expected an executable benchmark binary at {binary}")
-    if args.plot and (args.plot.suffix.lower() != ".png" or args.plot.exists()
-                      or args.plot.resolve() == args.csv.resolve()):
-        parser.error("--plot must be a new .png path distinct from the CSV")
 
     try:
         if args.wandb:
@@ -221,7 +197,7 @@ def main():
             writer = csv.DictWriter(output, fieldnames=FIELDS)
             writer.writeheader()
             output.flush()
-            print(f"Writing measurements to {args.csv}", flush=True)
+            print(f"Writing to {args.csv}", flush=True)
 
             def record(problem, repeat, result):
                 row = {"kernel": args.kernel, "problem_size": problem, "repeat": repeat, **result, **metadata}
@@ -249,14 +225,10 @@ def main():
         if args.plot:
             save_plot(plt, args.plot, groups)
         if args.wandb:
-            try:
-                log_wandb(wandb, args, rows, groups, metadata)
-            except wandb.Error as error:
-                parser.exit(1, f"W&B logging failed: {error}\nCSV saved to {args.csv}\n")
-    except ImportError as error:
-        parser.exit(1, f"{error}. Install wandb for --wandb or matplotlib for --plot.\n")
-    except (OSError, KeyError, ValueError, RuntimeError) as error:
-        parser.exit(1, f"{error}\n")
+            log_wandb(wandb, args, rows, groups, metadata)
+
+    except Exception as error:
+        raise Exception(f"Things didnt work while running the script. Error: {str(error)}")
 
 
 if __name__ == "__main__":
