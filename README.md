@@ -24,6 +24,21 @@ Run from the repo root on CIMS CUDA Linux with Python, an NVIDIA GPU, NVCC, CUDA
    python -m pip install -r requirements.txt
    ```
 
+   > **Note:** If you encounter disk quota issues while running this command, try one of the following:
+   >
+   > 1. Move to a different partition (e.g. `/scratch/`), which solved the issue for us.
+   > 2. Use a venv in a `/tmp/` folder:
+   >
+   >    ```bash
+   >    mkdir -p /tmp/$USER/tmp
+   >    export TMPDIR=/tmp/$USER/tmp
+   >    python -m venv /tmp/$USER/venv
+   >    source /tmp/$USER/venv/bin/activate
+   >    which python    # must show /tmp/$USER/venv/bin/python
+   >    python -m pip install --upgrade pip
+   >    python -m pip install --no-cache-dir -r requirements.txt
+   >    ```
+
 4. Make the project modules available:
 
    ```bash

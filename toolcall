@@ -20,7 +20,6 @@ TOOLCALL_GPU_ARCH = "sm_75"
 
 
 def kernel_symbol(ir):
-    # Clang versions use either the PTX calling convention or NVVM metadata.
     symbol = r'(@(?:"[^"]+"|[-\w.$]+))'
     kernels = set(re.findall(r"^define\b[^@\n]*\bptx_kernel\b[^@\n]*" + symbol, ir, re.M))
     kernels.update(re.findall(
@@ -111,7 +110,6 @@ def compile_aot_scorer(path, model, representation):
             cache = AdaptiveKernelSequence(states, lengths, gates, lengths)
             return AdaptiveConfigurationModel.score_cached(self, cache, context)
 
-    # This build has one kernel, so its retained row count is already known.
     with torch.no_grad():
         inputs = (torch.ones(1, model.context_encoder.network[0].in_features), representation.states.contiguous(),
                   representation.gates.contiguous())
@@ -206,7 +204,7 @@ def build(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build a CUDA program with model_output support")
+    parser = argparse.ArgumentParser(description="Build a CUDA proggram with model_output support")
     parser.add_argument("source", type=Path, help="CUDA source with one kernel to encode")
     parser.add_argument("--link-source", type=Path, action="append", default=[],
                         help="additional CUDA source to link, such as a separate host main()")
