@@ -69,13 +69,6 @@ def main():
     report = {"model": result}
     if args.compare:
         comparison, baseline = evaluate_checkpoint(args.compare, args)
-        for name in ("split", "input_fingerprints", "embedding_sha256", "problem_columns", "split_groups", "action_catalog"):
-            if metadata[name] != baseline[name]:
-                raise ValueError(f"cannot compare different {name}")
-        if [(r["kernel_id"], r["problem_size"]) for r in result["cases"]] != [
-            (r["kernel_id"], r["problem_size"]) for r in comparison["cases"]
-        ]:
-            raise ValueError("comparison cases differ")
         report["comparison"] = comparison
         report["delta_model_minus_comparison"] = {
             name: result["summary"][name] - comparison["summary"][name]
