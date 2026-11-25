@@ -1,2 +1,0 @@
-collector=0
-tee=0
