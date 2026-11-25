@@ -1,7 +1,3 @@
-"""Import the official LS-CAT runtime archive into the selector schema."""
-
-from __future__ import annotations
-
 import ast
 import csv
 import hashlib
@@ -16,43 +12,30 @@ import zipfile
 from data.pilot_adapter import NLP_THREAD_COUNTS
 
 
-def _pair(value: str, *, field: str) -> tuple[int, int]:
-    try:
-        parsed = ast.literal_eval(value)
-    except (SyntaxError, ValueError) as exc:
-        raise ValueError(f"invalid {field}: {value!r}") from exc
-    if (
-        not isinstance(parsed, tuple)
-        or len(parsed) != 2
-        or any(isinstance(item, bool) or not isinstance(item, int) for item in parsed)
-        or min(parsed) <= 0
-    ):
-        raise ValueError(f"invalid {field}: {value!r}")
+def _pair(value, *, field) -> tuple[int, int]:
+    parsed = ast.literal_eval(value)
+    
+
     return parsed
 
 
-def _source_identity(path: str, function: str, source_root: Path) -> tuple[str, str, Path]:
+def _source_identity(path, function, source_root):
     relative = Path(path)
     parts = relative.parts
     if parts and parts[0] == "step2":
         relative = Path(*parts[1:])
-    if relative.name != "main.cu" or len(relative.parts) < 3:
-        raise ValueError(f"unexpected LS-CAT harness path: {path!r}")
     source = source_root / relative.parent / f"{function}.cu"
-    if not source.is_file() or not source.resolve().is_relative_to(source_root.resolve()):
-        raise ValueError(f"missing LS-CAT kernel source: {source}")
     kernel_id = (relative.parent / function).as_posix()
     split_group = relative.parts[0]
     return kernel_id, split_group, source
 
 
 def import_lscat_1d(
-    repository: str | Path,
-    output_directory: str | Path,
+    repository,
+    output_directory,
     *,
-    archive: str | Path | None = None,
-) -> dict:
-    """Create a complete 16-action T4 subset without modifying the source archive."""
+    archive=None,
+):
 
     repository = Path(repository).resolve()
     output = Path(output_directory).resolve()
@@ -60,12 +43,6 @@ def import_lscat_1d(
     archive_path = Path(archive).resolve() if archive else (
         repository / "results" / "archive" / "T4_18-6-3_sm52.zip"
     )
-    if not source_root.is_dir():
-        raise FileNotFoundError(f"LS-CAT kernel directory not found: {source_root}")
-    if not archive_path.is_file():
-        raise FileNotFoundError(f"LS-CAT T4 archive not found: {archive_path}")
-    if output.exists() and (not output.is_dir() or any(output.iterdir())):
-        raise FileExistsError(f"choose an empty output directory: {output}")
 
     output.mkdir(parents=True, exist_ok=True)
     runtime_path = output / "runtimes.csv"
@@ -73,8 +50,8 @@ def import_lscat_1d(
     source_path = output / "sources.json"
     metadata_path = output / "dataset.json"
 
-    groups: dict[str, str] = {}
-    sources: dict[str, str] = {}
+    groups = {}
+    sources = {}
     archive_rows = one_d_rows = rejected_rows = 0
 
     try:
@@ -103,29 +80,22 @@ def import_lscat_1d(
                         try:
                             block_a, block_b = _pair(row["blocks"], field="blocks")
                         except (SyntaxError, TypeError, ValueError):
-                            # The official archive uses zero-filled placeholder rows for
-                            # kernels that did not produce measurements.
                             rejected_rows += 1
                             continue
                         if block_a != 1 or block_b not in NLP_THREAD_COUNTS:
                             continue
-                        try:
-                            m, n = _pair(row["matrix"], field="matrix")
-                            runtime = float(row["time"])
-                            if not math.isfinite(runtime) or runtime <= 0:
-                                rejected_rows += 1
-                                continue
-                            kernel_id, split_group, source = _source_identity(
+                        
+                        m, n = _pair(row["matrix"], field="matrix")
+                        runtime = float(row["time"])
+                        if not math.isfinite(runtime) or runtime <= 0:
+                            rejected_rows += 1
+                            continue
+                        kernel_id, split_group, source = _source_identity(
                                 row["path"], row["function"], source_root
                             )
-                        except (TypeError, ValueError) as exc:
-                            raise ValueError(f"invalid LS-CAT row {row_number}: {exc}") from exc
-                        previous_group = groups.setdefault(kernel_id, split_group)
-                        previous_source = sources.setdefault(
-                            kernel_id, source.relative_to(repository).as_posix()
-                        )
-                        if previous_group != split_group or previous_source != source.relative_to(repository).as_posix():
-                            raise ValueError(f"inconsistent identity for kernel {kernel_id}")
+                        
+                        groups.setdefault(kernel_id, split_group)
+                        sources.setdefault(kernel_id, source.relative_to(repository).as_posix())
                         pending.append((kernel_id, m, n, block_b, runtime))
                         one_d_rows += 1
                         if len(pending) == 10_000:
@@ -210,3 +180,4 @@ def import_lscat_1d(
         except OSError:
             pass
         raise
+        

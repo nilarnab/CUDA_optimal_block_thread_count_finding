@@ -1,13 +1,9 @@
-"""Model-ready dataset constructed from tokens and measured runtime vectors."""
-
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from launch.configuration_catalog import ConfigurationCatalog
 
-from .runtime_table import RuntimeKey, RuntimeTable
+from .runtime_table import RuntimeTable
 
 
 @dataclass(frozen=True)
@@ -21,13 +17,6 @@ class PreparedSample:
 
 
 class KernelRuntimeDataset(Sequence[PreparedSample]):
-    """A framework-neutral sequence that PyTorch can consume directly.
-
-    Target quality is ``(best_runtime / candidate_runtime) ** exponent``.
-    It preserves near-optimal alternatives while emphasizing the winner, which
-    matches the soft performance-target idea used by the LS-CAT NLP paper.
-    """
-
     def __init__(
         self,
         runtime_table: RuntimeTable,
@@ -37,8 +26,7 @@ class KernelRuntimeDataset(Sequence[PreparedSample]):
         kernel_ids: Iterable[str] | None = None,
         target_exponent: float = 12.0,
     ) -> None:
-        if target_exponent <= 0:
-            raise ValueError("target_exponent must be positive")
+        
         allowed = None if kernel_ids is None else set(kernel_ids)
         samples: list[PreparedSample] = []
         for key in runtime_table.contexts():
@@ -49,8 +37,6 @@ class KernelRuntimeDataset(Sequence[PreparedSample]):
             if not runtime_table.has_complete_context(key, catalog):
                 continue
             token_ids = tuple(int(value) for value in token_ids_by_kernel[key.kernel_id])
-            if not token_ids:
-                raise ValueError(f"kernel {key.kernel_id!r} has an empty token sequence")
             runtimes = runtime_table.runtime_vector(key, catalog)
             best = min(runtimes)
             samples.append(
@@ -74,20 +60,10 @@ class KernelRuntimeDataset(Sequence[PreparedSample]):
         return self._samples[index]
 
 
-def collate_samples(samples: Sequence[PreparedSample], *, padding_id: int = 0):
-    """Pad a batch and convert it to tensors.
+def collate_samples(samples, *, padding_id):
 
-    Torch is imported lazily so data inspection remains usable before the ML
-    dependencies are installed.
-    """
+    import torch
 
-    try:
-        import torch
-    except ImportError as exc:  # pragma: no cover - depends on optional runtime
-        raise RuntimeError("collate_samples requires PyTorch") from exc
-
-    if not samples:
-        raise ValueError("cannot collate an empty batch")
     lengths = torch.tensor([len(sample.token_ids) for sample in samples], dtype=torch.long)
     max_length = int(lengths.max())
     tokens = torch.full((len(samples), max_length), padding_id, dtype=torch.long)
