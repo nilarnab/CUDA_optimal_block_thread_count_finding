@@ -39,6 +39,8 @@ module load cuda-13.0
 mkdir -p build
 `
 
+- Make sure you have at least 6.7 GB space in your disk to create the environment and run the tool. If you want to run training and create your own checkpoint, you need more disk space quota so if you run into space problems, please clear your partition and try again.
+
 RUNNING THE TOOL:
 
 - Set the target for the GPU in cuda2 with 

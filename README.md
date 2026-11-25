@@ -42,6 +42,10 @@ Run from the repo root on CIMS CUDA Linux with Python, an NVIDIA GPU, NVCC, CUDA
    mkdir -p build
    ```
 
+Notes:
+
+- Make sure you have at least **6.7 GB** space in your disk to create the environment and run the tool. If you want to run training and create your own checkpoint, you need more disk space quota so if you run into space problems, please clear your partition and try again.
+
 ## Running the Tool
 
 1. Set the target for the GPU in cuda2 (or use the architecture of your GPU):
