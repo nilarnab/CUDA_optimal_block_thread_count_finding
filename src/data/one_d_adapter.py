@@ -2,9 +2,7 @@ from collections import defaultdict
 import csv
 import hashlib
 import json
-import math
 from pathlib import Path
-import re
 
 NLP_THREAD_COUNTS = tuple(range(64, 1025, 64))
 
@@ -43,8 +41,6 @@ def prepare_one_d_dataset(run_directory, output_directory):
 
     coverage = defaultdict(set)
     normalized = []
-    required = {"kernel_id", "m", "n", "k", "input_seed_index", "split_group",
-                "block_x", "block_y", "median_ms", "valid", "repeats_ok", "repeats_planned", "grid_policy"}
     with action_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
