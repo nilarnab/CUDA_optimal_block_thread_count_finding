@@ -1,5 +1,3 @@
-"""A small reusable supervised trainer for any compatible scorer model."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,16 +5,11 @@ import math
 from pathlib import Path
 import statistics
 import time
-from typing import Callable, Iterable
 
-try:
-    import torch
-    from torch import nn
-except ImportError as exc:  # pragma: no cover
-    raise ImportError("training.supervised_trainer requires PyTorch") from exc
+import torch
 
 from training.losses import PerformanceTargetLoss
-from training.metrics import RuntimeMetrics, runtime_metrics
+from training.metrics import runtime_metrics
 
 
 @dataclass(frozen=True)
@@ -32,8 +25,6 @@ class TrainerConfig:
 
 @dataclass(frozen=True)
 class InferenceLatency:
-    """End-to-end launch-time predictor latency with a cached kernel vector."""
-
     mean_ms: float
     median_ms: float
     p95_ms: float
@@ -41,7 +32,7 @@ class InferenceLatency:
 
 
 class SupervisedTrainer:
-    def __init__(self, model: nn.Module, config: TrainerConfig) -> None:
+    def __init__(self, model, config):
         self.model = model.to(config.device)
         self.config = config
         self.loss = PerformanceTargetLoss(config.loss)
@@ -51,13 +42,13 @@ class SupervisedTrainer:
             weight_decay=config.weight_decay,
         )
 
-    def _move(self, batch: dict) -> dict:
+    def _move(self, batch):
         return {
             key: value.to(self.config.device) if isinstance(value, torch.Tensor) else value
             for key, value in batch.items()
         }
 
-    def train_epoch(self, batches: Iterable[dict]) -> float:
+    def train_epoch(self, batches):
         self.model.train()
         total_loss = 0.0
         count = 0
@@ -74,34 +65,24 @@ class SupervisedTrainer:
             self.optimizer.step()
             total_loss += float(loss.item())
             count += 1
-        if count == 0:
-            raise ValueError("training loader produced no batches")
         return total_loss / count
 
     @torch.no_grad()
-    def evaluate(self, batches: Iterable[dict]) -> tuple[float, RuntimeMetrics]:
+    def evaluate(self, batches):
         self.model.eval()
-        losses: list[float] = []
-        logits_all: list[torch.Tensor] = []
-        runtimes_all: list[torch.Tensor] = []
+        losses = []
+        logits_all = []
+        runtimes_all = []
         for batch in batches:
             batch = self._move(batch)
             logits = self.model(batch["tokens"], batch["lengths"], batch["context"])
             losses.append(float(self.loss(logits, batch["targets"]).item()))
             logits_all.append(logits.cpu())
             runtimes_all.append(batch["runtimes"].cpu())
-        if not losses:
-            raise ValueError("evaluation loader produced no batches")
         metrics = runtime_metrics(torch.cat(logits_all), torch.cat(runtimes_all))
         return sum(losses) / len(losses), metrics
 
-    def fit(
-        self,
-        train_batches: Iterable[dict],
-        validation_batches: Iterable[dict],
-        *,
-        epoch_callback: Callable[[dict], None] | None = None,
-    ):
+    def fit(self, train_batches, validation_batches, *, epoch_callback=None):
         history = []
         for epoch in range(1, self.config.epochs + 1):
             training_loss = self.train_epoch(train_batches)
@@ -132,28 +113,8 @@ class SupervisedTrainer:
         return history
 
     @torch.no_grad()
-    def benchmark_inference(
-        self,
-        batches: Iterable[dict],
-        *,
-        warmup: int = 3,
-        repetitions: int = 5,
-    ) -> InferenceLatency:
-        """Benchmark the actual launch-time predictor with batch size one.
-
-        Kernel tokenization, FastText and LSTM encoding are performed before
-        timing and cached. Timing includes problem-size tensor construction
-        and transfer, context encoding, scoring, argmax, and returning the
-        selected action to the host. CUDA kernel execution is excluded.
-        """
-
-        if warmup < 0 or repetitions < 1:
-            raise ValueError("warmup must be non-negative and repetitions positive")
+    def benchmark_inference(self, batches, *, warmup=3, repetitions=5):
         self.model.eval()
-        if not hasattr(self.model, "encode_kernel") or not hasattr(
-            self.model, "score_cached"
-        ):
-            raise TypeError("model does not expose cached-kernel inference")
         samples = []
         for batch in batches:
             tokens = batch["tokens"].to(self.config.device)
@@ -166,17 +127,15 @@ class SupervisedTrainer:
                         tuple(float(value) for value in batch["context"][index]),
                     )
                 )
-        if not samples:
-            raise ValueError("latency benchmark received no samples")
 
-        def synchronize() -> None:
+        def synchronize():
             device = samples[0][0].device
             if device.type == "cuda":
                 torch.cuda.synchronize(device)
             elif device.type == "mps":
                 torch.mps.synchronize()
 
-        def choose(sample) -> int:
+        def choose(sample):
             kernel_vector, problem_size = sample
             context = torch.tensor(
                 [problem_size], dtype=torch.float32, device=self.config.device
@@ -208,7 +167,7 @@ class SupervisedTrainer:
             samples_per_second=1000.0 / mean_ms,
         )
 
-    def save_checkpoint(self, path: str | Path, **metadata) -> None:
+    def save_checkpoint(self, path, **metadata):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {
@@ -219,4 +178,3 @@ class SupervisedTrainer:
             },
             path,
         )
-

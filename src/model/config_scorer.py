@@ -1,14 +1,5 @@
-"""Shared model that scores every candidate launch configuration."""
-
-from __future__ import annotations
-
-from collections.abc import Sequence
-
-try:
-    import torch
-    from torch import nn
-except ImportError as exc:  # pragma: no cover
-    raise ImportError("model.config_scorer requires PyTorch") from exc
+import torch
+from torch import nn
 
 from encoders.context_encoder import ContextEncoder
 from encoders.fasttext_encoder import FrozenFastTextEncoder
@@ -17,38 +8,22 @@ from model.fusion import ConcatenationFusion
 
 
 class ConfigurationScorer(nn.Module):
-    def __init__(
-        self,
-        input_size: int,
-        action_count: int,
-        *,
-        hidden_sizes: Sequence[int] = (256, 128, 64),
-        dropout: float = 0.1,
-    ) -> None:
+    def __init__(self, input_size, action_count, *, hidden_sizes=(256, 128, 64), dropout=0.1):
         super().__init__()
         sizes = [input_size, *hidden_sizes, action_count]
-        layers: list[nn.Module] = []
+        layers = []
         for index, (source, target) in enumerate(zip(sizes, sizes[1:])):
             layers.append(nn.Linear(source, target))
             if index < len(sizes) - 2:
                 layers.extend((nn.ReLU(), nn.Dropout(dropout)))
         self.network = nn.Sequential(*layers)
 
-    def forward(self, representation: torch.Tensor) -> torch.Tensor:
+    def forward(self, representation):
         return self.network(representation)
 
 
 class ConfigurationModel(nn.Module):
-    """Assembles interchangeable modules into one trainable PyTorch model."""
-
-    def __init__(
-        self,
-        token_encoder: FrozenFastTextEncoder,
-        kernel_encoder: LSTMEncoder,
-        context_encoder: ContextEncoder,
-        scorer: ConfigurationScorer,
-        fusion: ConcatenationFusion | None = None,
-    ) -> None:
+    def __init__(self, token_encoder, kernel_encoder, context_encoder, scorer, fusion=None):
         super().__init__()
         self.token_encoder = token_encoder
         self.kernel_encoder = kernel_encoder
@@ -56,77 +31,47 @@ class ConfigurationModel(nn.Module):
         self.fusion = fusion or ConcatenationFusion()
         self.scorer = scorer
 
-    def encode_kernel(
-        self, tokens: torch.Tensor, lengths: torch.Tensor
-    ) -> torch.Tensor:
-        """Compute the kernel representation that can be cached offline."""
-
+    def encode_kernel(self, tokens, lengths):
         return self.kernel_encoder(self.token_encoder(tokens), lengths)
 
-    def score_cached(
-        self, kernel_vector: torch.Tensor, context: torch.Tensor
-    ) -> torch.Tensor:
-        """Score configurations from a cached kernel vector at launch time."""
-
+    def score_cached(self, kernel_vector, context):
         context_vector = self.context_encoder(context)
         return self.scorer(self.fusion(kernel_vector, context_vector))
 
-    def forward(
-        self,
-        tokens: torch.Tensor,
-        lengths: torch.Tensor,
-        context: torch.Tensor,
-    ) -> torch.Tensor:
+    def forward(self, tokens, lengths, context):
         return self.score_cached(self.encode_kernel(tokens, lengths), context)
 
 
 class ContextOnlyConfigurationModel(nn.Module):
-    """Ablation that predicts from structured problem dimensions alone."""
-
     def __init__(
         self,
-        embedding_matrix: torch.Tensor,
-        context_size: int,
-        action_count: int,
+        embedding_matrix,
+        context_size,
+        action_count,
         *,
-        context_features: int = 32,
-        hidden_sizes: Sequence[int] = (256, 128, 64),
-        dropout: float = 0.1,
-    ) -> None:
+        context_features=32,
+        hidden_sizes=(256, 128, 64),
+        dropout=0.1,
+    ):
         super().__init__()
-        # Keep the frozen matrix in checkpoints so the existing data provenance
-        # and evaluation path remain identical across ablations.
+
         self.token_encoder = FrozenFastTextEncoder(embedding_matrix)
         self.context_encoder = ContextEncoder(context_size, context_features)
         self.scorer = ConfigurationScorer(
             context_features, action_count, hidden_sizes=hidden_sizes, dropout=dropout
         )
 
-    def encode_kernel(
-        self, tokens: torch.Tensor, lengths: torch.Tensor
-    ) -> torch.Tensor:
-        """Return an empty cache: kernel identity and tokens are intentionally ignored."""
-
-        if tokens.ndim != 2 or lengths.shape != (tokens.size(0),):
-            raise ValueError("expected tokens [batch, steps] and lengths [batch]")
+    def encode_kernel(self, tokens, lengths):
         return torch.empty((tokens.size(0), 0), device=tokens.device)
 
-    def score_cached(
-        self, kernel_cache: torch.Tensor, context: torch.Tensor
-    ) -> torch.Tensor:
-        if kernel_cache.ndim != 2 or kernel_cache.size(0) != context.size(0):
-            raise ValueError("kernel cache and context batch sizes must match")
+    def score_cached(self, kernel_cache, context):
         return self.scorer(self.context_encoder(context))
 
-    def forward(
-        self, tokens: torch.Tensor, lengths: torch.Tensor, context: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, tokens, lengths, context):
         return self.score_cached(self.encode_kernel(tokens, lengths), context)
 
 
-def build_model(matrix, context_size: int, action_count: int, architecture: str,
-                lstm_hidden_size: int = 128):
-    """Recreate the model layouts used by the training runners."""
+def build_model(matrix, context_size, action_count, architecture, lstm_hidden_size=128):
     if architecture == "context":
         return ContextOnlyConfigurationModel(matrix, context_size, action_count)
     if architecture == "adaptive":
@@ -147,8 +92,6 @@ def build_model(matrix, context_size: int, action_count: int, architecture: str,
             else FinalStateConfigurationModel
         )
         return model_class(matrix, context_size, action_count, hidden_size=lstm_hidden_size)
-    if architecture != "baseline":
-        raise ValueError(f"unknown architecture: {architecture}")
     tokens = FrozenFastTextEncoder(matrix)
     kernel = LSTMEncoder(tokens.output_size, lstm_hidden_size, attention=True)
     context = ContextEncoder(context_size, 32)

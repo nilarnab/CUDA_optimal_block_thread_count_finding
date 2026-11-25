@@ -1,14 +1,4 @@
-"""Optional experiment-tracking adapters kept separate from model training."""
-
-from __future__ import annotations
-
-from collections.abc import Mapping
-from typing import Any
-
-
-def wandb_epoch_metrics(epoch_result: Mapping[str, Any]) -> dict[str, Any]:
-    """Translate internal metric names into stable W&B dashboard keys."""
-
+def wandb_epoch_metrics(epoch_result):
     return {
         "epoch": int(epoch_result["epoch"]),
         "train/loss": float(epoch_result["training_loss"]),
@@ -22,19 +12,15 @@ def wandb_epoch_metrics(epoch_result: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class WandbEpochLogger:
-    """Callable epoch callback accepting an initialized ``wandb.Run``."""
-
-    def __init__(self, run: Any) -> None:
+    def __init__(self, run):
         self.run = run
 
-    def __call__(self, epoch_result: Mapping[str, Any]) -> None:
+    def __call__(self, epoch_result):
         metrics = wandb_epoch_metrics(epoch_result)
         self.run.log(metrics, step=metrics["epoch"])
 
 
-def wandb_inference_metrics(latency: Any) -> dict[str, float]:
-    """Map cached launch-time predictor latency to W&B metric names."""
-
+def wandb_inference_metrics(latency):
     return {
         "inference/runtime_predictor_latency_mean_ms": float(latency.mean_ms),
         "inference/runtime_predictor_latency_median_ms": float(latency.median_ms),

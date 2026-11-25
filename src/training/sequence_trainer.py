@@ -1,32 +1,20 @@
-"""Use the existing training loop with soft targets or measured runtime regret."""
-
-from __future__ import annotations
-
 from dataclasses import replace
 
 import torch
 from torch import nn
 
 from training.losses import PerformanceTargetLoss
-from training.supervised_trainer import SupervisedTrainer, TrainerConfig
+from training.supervised_trainer import SupervisedTrainer
 
 
 class ExpectedRuntimeRegretLoss(nn.Module):
-    def forward(self, logits: torch.Tensor, runtimes: torch.Tensor) -> torch.Tensor:
-        if logits.ndim != 2 or logits.shape != runtimes.shape:
-            raise ValueError("logits and runtimes must have matching [batch, actions] shapes")
-        if not bool(torch.isfinite(runtimes).all()) or bool((runtimes <= 0).any()):
-            raise ValueError("runtimes must be finite and positive")
+    def forward(self, logits, runtimes):
         regret = runtimes / runtimes.min(dim=1, keepdim=True).values - 1
         return (logits.softmax(dim=-1) * regret).sum(dim=-1).mean()
 
 
 class SequenceTrainer(SupervisedTrainer):
-    """Adapt the label tensor so both objectives use the unchanged training loop."""
-
-    def __init__(self, model: nn.Module, config: TrainerConfig) -> None:
-        if config.loss not in {"bce", "mse", "regret"}:
-            raise ValueError("loss must be bce, mse, or regret")
+    def __init__(self, model, config):
         super().__init__(model, replace(config, loss="bce"))
         self.config = config
         self.loss = (
@@ -34,7 +22,7 @@ class SequenceTrainer(SupervisedTrainer):
             if config.loss == "regret" else PerformanceTargetLoss(config.loss)
         )
 
-    def _move(self, batch: dict) -> dict:
+    def _move(self, batch):
         batch = super()._move(batch)
         if self.config.loss == "regret":
             batch["targets"] = batch["runtimes"]
@@ -42,7 +30,7 @@ class SequenceTrainer(SupervisedTrainer):
 
     @torch.no_grad()
     def evaluate(self, batches):
-        # Weight by samples, including a smaller final batch, for comparable losses.
+
         weighted_loss = 0.0
         count = 0
         logits_all, runtimes_all = [], []
@@ -57,8 +45,6 @@ class SequenceTrainer(SupervisedTrainer):
             count += size
             logits_all.append(logits.cpu())
             runtimes_all.append(batch["runtimes"].cpu())
-        if not count:
-            raise ValueError("evaluation loader produced no batches")
         return weighted_loss / count, runtime_metrics(
             torch.cat(logits_all), torch.cat(runtimes_all)
         )

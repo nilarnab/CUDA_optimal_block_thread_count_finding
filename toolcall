@@ -159,7 +159,6 @@ def build(args):
     artifact_root = output.parent / ".toolcall"
     artifact_root.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix="kernel-", dir=artifact_root))
-    finished = False
     try:
         compiler = LLVMCompiler(
             clang=args.clang, cuda_path=args.cuda_path, gpu_arch=args.gpu_arch,
@@ -197,16 +196,12 @@ def build(args):
             "-Xlinker=-rpath", f"-Xlinker={runpath}", "-o", str(binary),
         ], check=True)
         os.replace(binary, output)
-        finished = True
-    finally:
-        if not finished:
-            shutil.rmtree(stage)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
     print(f"Kernel: {symbol}")
     print(f"Retained states: {retained_rows}")
     print(f"Artifacts: {stage}")
-    print(f"Model library: {stage / LIBRARY}")
-    if args.aot:
-        print(f"PyTorch scorer: {package}")
     print(f"Executable: {output}")
 
 
@@ -230,8 +225,15 @@ def main():
     parser.add_argument("--nvcc", default="nvcc")
     parser.add_argument("--cuda-path")
     args = parser.parse_args()
-    if not args.gpu_arch:
-        parser.error("--gpu-arch must be nonempty")
+    if args.gpu_arch is None:
+        import torch
+
+        if not torch.cuda.is_available():
+            parser.error("CUDA detection unavailable. Pass --gpu-arch, for example sm_75.")
+
+        major, minor = torch.cuda.get_device_capability(0)
+        args.gpu_arch = f"sm_{major}{minor}"
+
     try:
         build(args)
     except (ImportError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:

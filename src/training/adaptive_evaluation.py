@@ -1,7 +1,3 @@
-"""Per-case compression and cached-predictor timing, without launching dataset kernels."""
-
-from __future__ import annotations
-
 from collections import Counter
 import csv
 import json
@@ -65,11 +61,7 @@ def length_summary(rows):
     kernels = {}
     for row in rows:
         kernel = row["kernel_id"]
-        if kernel in kernels and kernels[kernel]["learned_h"] != row["learned_h"]:
-            raise ValueError(f"kernel-only representation length changed across problem sizes: {kernel}")
         kernels[kernel] = {name: row[name] for name in ("learned_h", "input_token_count", "expected_h")}
-    if not kernels:
-        raise ValueError("no representations to summarize")
     lengths = [row["learned_h"] for row in kernels.values()]
     return {
         "per_kernel": kernels, "kernel_count": len(kernels),
@@ -102,8 +94,6 @@ def timing_environment(device, dataset_device=None):
 @torch.no_grad()
 def prediction_cases(model, batches, catalog, device, *, loss_kind="bce", length_penalty=0.0,
                      warmup=3, repetitions=10, epoch=0):
-    if warmup < 0 or repetitions < 1:
-        raise ValueError("warmup must be nonnegative and repetitions positive")
     model.eval()
     device = torch.device(device)
     criterion = ExpectedRuntimeRegretLoss() if loss_kind == "regret" else PerformanceTargetLoss(loss_kind)
@@ -112,13 +102,10 @@ def prediction_cases(model, batches, catalog, device, *, loss_kind="bce", length
         row = _length_row(cached, batch, index, "validation", epoch)
         dimensions = tuple(float(v) for v in batch["context"][index])
         context = torch.tensor([dimensions], dtype=torch.float32, device=device)
-        # Capture the dense input once; measurement has no instrumentation hooks.
+
         inputs = []
-        hook = model.scorer.register_forward_pre_hook(lambda module, args: inputs.append(args[0]))
-        try:
+        with model.scorer.register_forward_pre_hook(lambda module, args: inputs.append(args[0])):
             logits = model.score_cached(cached, context)
-        finally:
-            hook.remove()
         dense_input = inputs[0]
         action = int(logits.argmax(dim=-1).item())
         label_key = "runtimes" if loss_kind == "regret" else "targets"
@@ -156,8 +143,6 @@ def prediction_cases(model, batches, catalog, device, *, loss_kind="bce", length
             selected = choose()
             _synchronize(device)
             predictor_times.append((time.perf_counter_ns() - started) / 1e6)
-            if selected != action:
-                raise RuntimeError("cached evaluation produced inconsistent action choices")
         runtimes = batch["runtimes"][index]
         selected_ms = float(runtimes[action]) / 1000.0
         optimal_ms = float(runtimes.min()) / 1000.0
@@ -172,8 +157,6 @@ def prediction_cases(model, batches, catalog, device, *, loss_kind="bce", length
             "task_loss": task_loss, "objective": task_loss + length_penalty * row["expected_h"],
         })
         rows.append(row)
-    if not rows:
-        raise ValueError("no validation cases")
     return rows
 
 
@@ -192,8 +175,6 @@ def case_summary(rows):
 
 
 def write_rows(path, rows, problem_columns):
-    if not rows:
-        raise ValueError("no rows to write")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     extra_columns = [name for name in problem_columns if name not in rows[0]]

@@ -107,7 +107,6 @@ auto score(ProblemSize problem, const Kernel& kernel) {
         auto hidden = linear(attention0_w, attention0_b, input);
         for (auto& value : hidden) value = std::tanh(value);
         const float logit = linear(attention1_w, attention1_b, hidden)[0] + kernel.gates[row];
-        // Accumulate softmax-weighted scores without allocating per-row buffers.
         const float next_max = std::max(max_logit, logit);
         const float old_scale = std::exp(max_logit - next_max);
         const float row_scale = std::exp(logit - next_max);
@@ -123,7 +122,7 @@ auto score(ProblemSize problem, const Kernel& kernel) {
 
 #endif
 
-}  // namespace
+}
 
 std::pair<unsigned, unsigned> choose_launch(
     ProblemSize problem, const Kernel& kernel, LaunchLimits limits) {
@@ -147,4 +146,4 @@ std::pair<unsigned, unsigned> choose_launch(
     return best;
 }
 
-}  // namespace toolcall::detail
+}

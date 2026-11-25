@@ -13,7 +13,7 @@ void check(cudaError_t status) {
     if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
 }
 
-}  // namespace
+}
 
 std::pair<unsigned, unsigned> model_output(const void* kernel, ProblemSize problem) {
     if (!kernel) throw std::invalid_argument("model_output expects a CUDA kernel");
@@ -25,7 +25,6 @@ std::pair<unsigned, unsigned> model_output(const void* kernel, ProblemSize probl
     static thread_local CachedLimits cached;
     int device;
     check(cudaGetDevice(&device));
-    // The active device can change between calls. Reuse limits for repeated launches.
     if (cached.device != device || cached.kernel != kernel) {
         cudaDeviceProp properties{};
         cudaFuncAttributes attributes{};
@@ -41,5 +40,5 @@ std::pair<unsigned, unsigned> model_output(const void* kernel, ProblemSize probl
     return detail::choose_launch(problem, detail::compiled_kernel, cached.limits);
 }
 
-}  // namespace toolcall
+}
 #endif

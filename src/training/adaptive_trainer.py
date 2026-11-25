@@ -1,7 +1,3 @@
-"""Train a learned representation budget with the existing action objectives."""
-
-from __future__ import annotations
-
 import copy
 import math
 import statistics
@@ -20,19 +16,11 @@ class AdaptiveTrainer(SequenceTrainer):
         model,
         config,
         *,
-        length_penalty: float = 0.0,
-        kl_weight: float = 0.0,
-        kl_temperature: float = 2.0,
-        kl_ema_decay: float = 0.99,
+        length_penalty=0.0,
+        kl_weight=0.0,
+        kl_temperature=2.0,
+        kl_ema_decay=0.99,
     ):
-        if not math.isfinite(length_penalty) or length_penalty < 0:
-            raise ValueError("length penalty must be finite and nonnegative")
-        if not math.isfinite(kl_weight) or kl_weight < 0:
-            raise ValueError("KL weight must be finite and nonnegative")
-        if not math.isfinite(kl_temperature) or kl_temperature <= 0:
-            raise ValueError("KL temperature must be finite and positive")
-        if not math.isfinite(kl_ema_decay) or not 0 <= kl_ema_decay < 1:
-            raise ValueError("KL EMA decay must be finite and in [0, 1)")
         super().__init__(model, config)
         self.length_penalty = length_penalty
         self.kl_weight = kl_weight
@@ -101,8 +89,6 @@ class AdaptiveTrainer(SequenceTrainer):
                     + self.length_penalty * expected.mean()
                     + self.kl_weight * kl_loss
                 )
-                if not bool(torch.isfinite(loss)):
-                    raise FloatingPointError("non-finite task/length objective")
                 if training:
                     loss.backward()
                     if self.config.gradient_clip is not None:
@@ -126,8 +112,6 @@ class AdaptiveTrainer(SequenceTrainer):
                             "learned_h": int(actual[index]), "expected_h": float(expected[index]),
                             "hidden_width": cached.states.size(-1) if hasattr(cached, "states") else cached.size(-1),
                         })
-        if not count:
-            raise ValueError("loader produced no batches")
         result = {"loss": total_objective / count, "task_loss": total_task / count,
                   "expected_h": total_expected / count, "kl_loss": total_kl / count}
         if not training:

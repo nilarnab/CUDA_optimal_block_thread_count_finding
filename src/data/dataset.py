@@ -1,9 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
-
-from launch.configuration_catalog import ConfigurationCatalog
-
-from .runtime_table import RuntimeTable
+from typing import Sequence
 
 
 @dataclass(frozen=True)
@@ -19,16 +15,15 @@ class PreparedSample:
 class KernelRuntimeDataset(Sequence[PreparedSample]):
     def __init__(
         self,
-        runtime_table: RuntimeTable,
-        catalog: ConfigurationCatalog,
-        token_ids_by_kernel: Mapping[str, Sequence[int]],
+        runtime_table,
+        catalog,
+        token_ids_by_kernel,
         *,
-        kernel_ids: Iterable[str] | None = None,
-        target_exponent: float = 12.0,
-    ) -> None:
-        
+        kernel_ids=None,
+        target_exponent=12.0,
+    ):
         allowed = None if kernel_ids is None else set(kernel_ids)
-        samples: list[PreparedSample] = []
+        samples = []
         for key in runtime_table.contexts():
             if allowed is not None and key.kernel_id not in allowed:
                 continue
@@ -53,15 +48,14 @@ class KernelRuntimeDataset(Sequence[PreparedSample]):
             )
         self._samples = samples
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self._samples)
 
-    def __getitem__(self, index: int) -> PreparedSample:
+    def __getitem__(self, index):
         return self._samples[index]
 
 
-def collate_samples(samples, *, padding_id):
-
+def collate_samples(samples, *, padding_id=0):
     import torch
 
     lengths = torch.tensor([len(sample.token_ids) for sample in samples], dtype=torch.long)
@@ -82,4 +76,3 @@ def collate_samples(samples, *, padding_id):
             [sample.optimal_action for sample in samples], dtype=torch.long
         ),
     }
-

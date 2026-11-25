@@ -1,5 +1,3 @@
-"""Dataset, runtime-table, and split utilities."""
-
 from .dataset import KernelRuntimeDataset, PreparedSample, collate_samples
 from .runtime_table import RuntimeKey, RuntimeTable
 from .splits import (
@@ -20,4 +18,3 @@ __all__ = [
     "split_kernel_ids",
     "split_train_validation_kernel_ids",
 ]
-
