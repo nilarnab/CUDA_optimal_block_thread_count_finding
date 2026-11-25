@@ -145,7 +145,7 @@ python scripts/train_fasttext.py --corpus "$lscat/fasttext_corpus.txt" --vocabul
 
 - Train the adaptive selector on CUDA with 50 held-out source groups and all remaining groups for training with
 `
-python scripts/train_adaptive.py --runtimes "$lscat/runtimes_frontend.csv" --token-ids "$lscat/token_ids.json" --embedding-matrix "$lscat/fasttext_embeddings.pt" --problem-columns m n --split-groups "$lscat/split_groups_frontend.json" --validation-groups 50 --seed 2 --device cuda --epochs 120 --batch-size 8 --loss bce --architecture adaptive --lstm-hidden-size 1 --length-penalty 1e-8 --kl-weight 0 --checkpoint build/lscat_adaptive.pt --save-best
+python scripts/train_adaptive.py --runtimes "$lscat/runtimes_frontend.csv" --token-ids "$lscat/token_ids.json" --embedding-matrix "$lscat/fasttext_embeddings.pt" --problem-columns m n --split-groups "$lscat/split_groups_frontend.json" --validation-groups 50 --seed 2 --device cuda --epochs 120 --batch-size 8 --loss bce --architecture adaptive --lstm-hidden-size 1 --length-penalty 1e-8 --kl-weight 0 --checkpoint checkpoints/lscat_adaptive.pt --save-best
 `
 
 - Add `--training-groups 400` to use the report's training group cap.
