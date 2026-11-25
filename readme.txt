@@ -31,7 +31,7 @@ export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 
 - Load the cuda module with
 `
-module load nvcc-13.0
+module load cuda-13.0
 `
 
 - Create the output directory with 
