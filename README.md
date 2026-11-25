@@ -1,233 +1,205 @@
-# Modular CUDA launch-configuration selector
+# CUDA Thread-Block Selector Quick Start
 
-This Python package implements the supervised model pipeline discussed in
-*Autotuning CUDA: Applying NLP Techniques to LS-CAT* while keeping the modules
-generic enough for other kernel datasets and future DPO/RL trainers.
+## Setup
 
-## Implemented pipeline
+Run from the repo root on CIMS CUDA Linux with Python, an NVIDIA GPU, NVCC, CUDA-capable clang++, and a C++17 host compiler.
 
-```text
-CUDA source -> LLVM IR -> tokens -> frozen FastText vectors -> LSTM
-                                                        |
-problem dimensions -> context encoder ------------------+
-                                                        |
-                                      configuration scorer
-                                                        |
-                                one score per catalog entry
-```
+1. Create the environment:
 
-`ConfigurationCatalog` is configurable. Its `lscat()` factory contains the 16
-one-dimensional thread-count actions from 64 through 1024 used by the NLP
-baseline. `lscat_all_shapes()` retains the 20-shape raw-dataset catalog for
-separate experiments.
+   ```bash
+   python -m venv .venv
+   # or
+   python3.11 -m venv .venv
+   ```
 
-These are CUDA **threads-per-block actions**, not grid/block counts. The pilot
-adapter maps native `(N,1)` and `(1,N)` measurements to the same abstract
-action `N`, while preserving the physical per-kernel launch mapping in
-`launch_mappings.json`. The application still derives a correctness-preserving
-grid and restores the appropriate orientation.
+2. Activate it:
 
-The model is trained against a configurable soft performance vector:
+   ```bash
+   . .venv/bin/activate
+   ```
 
-```text
-target[i] = (fastest runtime / runtime[i]) ** exponent
-```
+3. Install dependencies:
 
-The default exponent is 12, inspired by the paper's best reported exponent-12
-target transformation. The paper calls its exact transformation a modified
-Softmax but does not provide enough detail to claim this ratio transform is an
-exact reproduction. BCE and MSE training losses are available. Inference
-returns the catalog entry with the highest score.
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
 
-## Install
+4. Make the project modules available:
 
-The project uses `uv` with Python 3.11 and a committed lockfile. Install `uv`,
-then create the environment with every optional feature:
+   ```bash
+   export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+   ```
 
-```bash
-python3 -m pip install --user uv
-export PATH="$HOME/.local/bin:$PATH"
-uv sync --python 3.11 --all-extras --locked
-```
+5. Load the CUDA module:
 
-`uv` downloads Python 3.11 when it is not already available and creates the
-project `.venv`. The explicit `--python 3.11` also replaces an incompatible
-pre-existing environment. For an installation without FastText or W&B, use
-`uv sync --python 3.11 --locked`.
-To verify that the lockfile is current without changing it:
+   ```bash
+   module load cuda-13.0
+   ```
 
-```bash
-uv lock --check
-```
+6. Create the output directory:
 
-On a CUDA machine, verify the resolved PyTorch build before training:
+   ```bash
+   mkdir -p build
+   ```
 
-```bash
-uv run --locked python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
-```
+## Running the Tool
 
-## Runtime table format
+1. Set the target for the GPU in cuda2 (or use the architecture of your GPU):
 
-The default loader expects:
+   ```bash
+   arch=sm_75
+   ```
 
-```csv
-kernel_id,problem_size,block_x,block_y,block_z,runtime_us
-k1,1024,64,1,1,18.42
-k1,1024,128,1,1,15.17
-```
+2. Select the example:
 
-Repeated rows are allowed and are reduced to their median. Column mappings are
-configurable in `RuntimeTable.from_csv()`.
+   ```bash
+   kernel=matrix_multiply_and_relu
+   ```
 
-## Run tests
+3. Set the source folder:
 
-The data, tokenizer, catalog, and split tests use only the Python standard
-library:
+   ```bash
+   example=examples/runtime_launch/$kernel
+   ```
 
-```bash
-uv run --locked python -m unittest discover -s tests -v
-```
+4. Build the model binary:
 
-## Prepare the collected pilot
+   ```bash
+   ./toolcall --gpu-arch "$arch" "$example/${kernel}_model.cu" -o "build/${kernel}_model"
+   ```
 
-Convert a complete pilot run into the common 16-action runtime table and copy
-the six kernels under stable semantic IDs:
+5. Build the fixed binary (kernel with block size given as input by the user):
 
-```bash
-uv run --locked python -c 'from data.pilot_adapter import prepare_pilot_dataset; print(prepare_pilot_dataset("data/full-20261103T225641Z-cr8Us0", "data/processed"))'
-```
+   ```bash
+   nvcc -std=c++17 -O3 -arch="$arch" "$example/${kernel}_fixed.cu" -o "build/${kernel}_fixed"
+   ```
 
-For the current collection this produces 672 runtime rows:
+6. Run the model binary, where the three numbers are the input problem size `M`, `N`, and `K`:
 
-```text
-6 kernels × 7 problem sizes × 16 actions = 672
-```
+   ```bash
+   "./build/${kernel}_model" 6144 6144 6144
+   ```
 
-It excludes the four square shapes recorded only for `matrix_add`. The raw run
-directory is never modified.
+7. Run the same input at 256 threads per block:
 
-## Import the full public LS-CAT dataset
+   ```bash
+   "./build/${kernel}_fixed" 6144 6144 6144 256
+   ```
 
-Clone the official NTNU repository under the ignored raw-data directory and
-convert its archived T4 measurements to the same 16-action schema:
+8. Save a sweep CSV under `results/launch_benchmarks/`:
 
-```bash
-git clone --depth 1 https://github.com/NTNU-HPC-Lab/LS-CAT.git \
-  data/raw/ls-cat-official
+   ```bash
+   python scripts/collect_launch_benchmarks.py \
+     --kernel "$kernel" \
+     --model-bin "build/${kernel}_model" \
+     --fixed-bin "build/${kernel}_fixed" \
+     --size 6144 6144 6144 \
+     --blocks 64 128 256 512
+   ```
 
-PYTHONPATH=src uv run --locked python scripts/import_lscat.py \
-  --repository data/raw/ls-cat-official \
-  --output-dir data/processed/lscat_t4_1d
-```
+Notes:
 
-The importer keeps only `(1,N)` block shapes for `N=64,...,1024`, averages
-duplicate archived T4 measurements, rejects failure placeholders, retains only
-contexts containing all 16 actions, and groups kernels by original repository
-for leakage-resistant splitting. The generated `sources.json` maps every
-runtime kernel ID to its official CUDA source.
+- Read `gpu_us`, `selection_us`, and `total_us` as medians over 51 timed trials. Divide fixed `total_us` by model `total_us` for speedup including selection.
+- See the `examples/runtime_launch` folder for other example kernels to run.
 
-On a CUDA/Clang machine, process only those sources rather than the repository's
-generated benchmark harnesses:
+## Running the Tool on a Custom Kernel
 
-```bash
-uv run --locked python scripts/prepare_frontend.py \
-  --source-manifest data/processed/lscat_t4_1d/sources.json \
-  --source-root data/raw/ls-cat-official \
-  --output-dir data/processed/lscat_t4_1d \
-  --cuda-path "$CONDA_PREFIX" \
-  --gpu-arch sm_75 \
-  --keep-going \
-  --verbose
-```
+- Start from `matrix_multiply_and_relu_model.cu` for timing and output checks. Keep one `__global__` kernel in the primary `.cu` file, as the tool currently supports only one kernel per `.cu` file.
+- Include `toolcall.hpp` in the host launcher and get launch dimensions with:
 
-This frontend step cannot run on macOS because it requires a CUDA toolkit.
-After producing `token_ids.json` and `fasttext_corpus.txt`, use the filtering
-step in [readme.txt](readme.txt) to keep the runtimes and groups for kernels that
-compiled. Train FastText using paths under `data/processed/lscat_t4_1d`. Training
-uses `--problem-columns m n` and the filtered split groups.
+  ```cpp
+  const auto [grid, block] = toolcall::model_output(my_kernel, {m, n, k, work_items});
+  ```
 
-Next prepare LLVM IR, the vocabulary, token IDs, and the FastText corpus on a
-machine with Clang CUDA support:
+- Match `m`, `n`, and `k` to the checkpoint inputs, and set `work_items` to the number of items the 1D grid covers.
+- For one item per thread, launch with the call below and guard the item index inside the kernel:
 
-```bash
-uv run --locked python scripts/prepare_frontend.py \
-  --cuda-dir data/processed/cuda \
-  --output-dir data/processed \
-  --gpu-arch sm_75 \
-  --verbose
-```
+  ```cpp
+  my_kernel<<<grid, block>>>(inputs, output, work_items);
+  ```
 
-Train the frozen 40-dimensional skip-gram frontend and export the embedding
-matrix:
+- For a tiled kernel, use the selected thread count to construct the matching block and grid, as the matrix example does.
+- Build with `./toolcall my_kernel.cu -o build/my_kernel`. Add `--link-source main.cu` if `main()` is in a separate file.
+- Run `./build/my_kernel` with the arguments your `main()` expects.
+- Use `--native` to select the native C++ CPU scorer, or use the default AOTInductor backend.
+- Pass `--checkpoint` and the matching `--vocabulary` to deploy your own adaptive model. Steps to get your own checkpoint and vocabulary are given below.
 
-```bash
-uv run --locked python scripts/train_fasttext.py \
-  --corpus data/processed/fasttext_corpus.txt \
-  --vocabulary data/processed/vocabulary.json \
-  --output-model data/processed/fasttext.bin \
-  --output-matrix data/processed/fasttext_embeddings.pt \
-  --verbose
-```
+## Training
 
-Then train the selector:
+1. Set locations for the LS-CAT checkout and processed dataset:
 
-```bash
-uv run --locked python scripts/train_sequence.py --architecture baseline \
-  --runtimes data/processed/runtimes.csv \
-  --token-ids data/processed/token_ids.json \
-  --embedding-matrix data/processed/fasttext_embeddings.pt \
-  --checkpoint checkpoints/supervised.pt \
-  --validation-kernels 2 \
-  --verbose
-```
+   ```bash
+   lscat_repo=data/raw/ls-cat-official
+   lscat=data/processed/lscat_t4_1d
+   ```
 
-`--verbose` prints extra progress in frontend preparation, FastText training,
-and sequence training.
+2. Download the public CUDA sources and archived timings:
 
-With six kernels, the default two-way, kernel-disjoint split contains four
-training kernels (28 samples) and two unseen validation kernels (14 samples).
-Every problem size belonging to a kernel stays in the same partition. The
-checkpoint records the exact kernel IDs used by each partition.
+   ```bash
+   git clone --depth 1 https://github.com/NTNU-HPC-Lab/LS-CAT.git "$lscat_repo"
+   ```
 
-## Weights & Biases tracking
+3. Import all T4 workload cases with a complete sweep of the selector's 16 one-dimensional block sizes into a new or empty output directory:
 
-Pass a project name to enable W&B for a training run:
+   ```bash
+   python scripts/import_lscat.py --repository "$lscat_repo" --output-dir "$lscat"
+   ```
 
-```bash
-uv run --locked python scripts/train_sequence.py --architecture baseline \
-  --runtimes data/processed/runtimes.csv \
-  --token-ids data/processed/token_ids.json \
-  --embedding-matrix data/processed/fasttext_embeddings.pt \
-  --checkpoint checkpoints/supervised.pt \
-  --validation-kernels 2 \
-  --wandb-project cuda-block-selector \
-  --wandb-run-name lscat-baseline \
-  --verbose
-```
+4. Compile the imported kernel sources to LLVM IR and generate the vocabulary, token IDs, and FastText corpus:
 
-`--wandb-run-name` sets the displayed run name.
+   ```bash
+   python scripts/prepare_frontend.py \
+     --source-manifest "$lscat/sources.json" \
+     --source-root "$lscat_repo" \
+     --output-dir "$lscat"
+   ```
 
-Input and output paths, split membership, action values, model sizes, and all
-other settings remain available in the W&B configuration panel instead of
-making the displayed run name excessively long.
+   > This step takes several hours as there are a lot of kernels to process. To run it quicker, remove some kernels from the dataset to use a subset.
 
-The run records the model and split configuration plus training loss,
-validation loss, performance score, mean regret, and exact-optimal rate for
-every epoch. After training it caches each kernel representation and benchmarks
-the batch-size-one runtime predictor. It reports mean, median, and p95 latency
-plus throughput. Timing includes problem-size tensor creation/transfer, the
-context encoder, configuration scorer, `argmax`, and returning the action to
-the host. It excludes the offline LLVM, tokenization, FastText and LSTM stages,
-as well as CUDA kernel execution. Use `--latency-warmup` and
-`--latency-repetitions` to control the benchmark.
+5. Generate the filtered runtime and split-group files for successfully compiled kernels:
 
-Use `--wandb-entity` for a team account. To collect data without
-network access, add `--wandb-mode offline`; it can later be uploaded with
-`wandb sync <run-directory>`. If `--wandb-project` is omitted, W&B is neither
-imported nor initialized.
+   ```bash
+   python scripts/prepare_frontend_from_ir.py \
+     --ir-dir "$lscat/llvm_ir" \
+     --output-dir "$lscat" \
+     --runtimes "$lscat/runtimes.csv" \
+     --split-groups "$lscat/split_groups.json"
+   ```
 
-The LS-CAT files are intentionally not hard-coded into the model. This keeps
-the implementation usable with our own GPU measurements and with future
-representation modules. Split kernels before training FastText when strict
-evaluation requires the embedding vocabulary to see training kernels only.
+6. Train FastText and export the embedding matrix:
 
+   ```bash
+   python scripts/train_fasttext.py \
+     --corpus "$lscat/fasttext_corpus.txt" \
+     --vocabulary "$lscat/vocabulary.json" \
+     --output-model "$lscat/fasttext.bin" \
+     --output-matrix "$lscat/fasttext_embeddings.pt"
+   ```
+
+7. Train the adaptive selector on CUDA with 50 held-out source groups and all remaining groups for training:
+
+   ```bash
+   python scripts/train_adaptive.py \
+     --runtimes "$lscat/runtimes_frontend.csv" \
+     --token-ids "$lscat/token_ids.json" \
+     --embedding-matrix "$lscat/fasttext_embeddings.pt" \
+     --problem-columns m n \
+     --split-groups "$lscat/split_groups_frontend.json" \
+     --validation-groups 50 \
+     --seed 2 \
+     --device cuda \
+     --epochs 120 \
+     --batch-size 8 \
+     --loss bce \
+     --architecture adaptive \
+     --lstm-hidden-size 1 \
+     --length-penalty 1e-8 \
+     --kl-weight 0 \
+     --checkpoint checkpoints/lscat_adaptive.pt \
+     --save-best
+   ```
+
+Options:
+
+- Add `--training-groups 400` to use the report's training group cap.
+- Use `--split-seed` to set the split independently of the training seed.
